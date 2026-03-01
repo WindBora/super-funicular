@@ -25,6 +25,7 @@ class ParamCurve(ABC):
     @abstractmethod
     def y_der(self, t: FloatArray) -> FloatArray: ...
 
+    # Correct
     def R(self, t: FloatArray, t0: FloatArray) -> FloatArray:
         """
         Pairwise distance R(t, t0) = sqrt( (x(t)-x(t0))^2 + (y(t)-y(t0))^2 )
@@ -37,6 +38,7 @@ class ParamCurve(ABC):
         yt0 = self.y(t0)
         return np.sqrt((xt - xt0) ** 2 + (yt - yt0) ** 2)
 
+    # Correct
     def R_t0_der_coord(self, t: FloatArray, coords0: FloatArray) -> FloatArray:
         """Mathematica provided"""
         xt = self.x(t)
@@ -48,6 +50,7 @@ class ParamCurve(ABC):
         )
         return result
 
+    # Correct
     def R_t0_der(self, t: FloatArray, t0: FloatArray) -> FloatArray:
         """Mathematica provided"""
         xt = self.x(t)
@@ -55,7 +58,7 @@ class ParamCurve(ABC):
         xt0 = self.x(t0)
         yt0 = self.y(t0)
         result = ((xt0 - xt) * self.x_der(t0) + (yt0 - yt) * self.y_der(t0)) / np.sqrt(
-            (xt0 - xt) ** 2 + (yt0 - yt) ** 2
+            (xt - xt0) ** 2 + (yt - yt0) ** 2
         )
         return result
 

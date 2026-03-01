@@ -96,8 +96,14 @@ class Solution:
 
         # Z = U0_abs + U_abs  # Full solution
         Z = np.abs(U0 + U) ** 2  # Full solution
-        # Z = U0_abs # Incident
+        # Z = np.abs(U0 + U)  # Full solution
+        # Z = U0_abs  # Incident
         # Z = U_abs # Dispersion
+
+        # q = np.abs(U0 + U)
+        # q = np.abs(U0)
+
+        # Z = 20 * np.log10(q / np.max(q))
 
         return Z
 
@@ -137,7 +143,7 @@ class Solution:
             -1,
             1,
             complex_func=True,
-            limit=100,
+            limit=200,
         )
         return -result
 
@@ -148,7 +154,7 @@ class Solution:
             -1,
             1,
             complex_func=True,
-            limit=100,
+            limit=200,
         )
         return result
 
@@ -169,7 +175,9 @@ class Solution:
         y = np.asarray(y, dtype=np.complex128)
 
         t = cheb_first_kind(self.n)
+        self.t = t
         t_0j = cheb_second_kind_interior(self.n)
+        self.t_0j = t_0j
 
         # Ax = b
         A = np.zeros((self.n, self.n), dtype=np.complex128)
@@ -178,41 +186,29 @@ class Solution:
 
         for j in range(self.n - 1):
             for i in range(self.n):
-                A[j, i] = (
-                    np.pi * (1 / (t[i] - t_0j[j]) + self.K_t_t0(t[i], t_0j[j])) / self.n
-                )
+                A[j, i] = (1 / (t[i] - t_0j[j]) + self.K_t_t0(t[i], t_0j[j])) / self.n
             b[j] = f_vector[j]
 
         for i in range(self.n):
-            tmp = np.pi * self.M_t(t[i]) / self.n
+            tmp = self.M_t(t[i]) / self.n
             A[self.n - 1, i] = tmp
 
         b[self.n - 1] = self.constant_c()
 
         v = np.linalg.solve(A, b)
+        self.v = v
 
-        U = np.zeros(x.shape, dtype=np.complex128)
-
-        for x_i in range(x.shape[0]):
-            for x_j in range(x.shape[1]):
-                U_ = (
-                    np.pi
-                    / self.n
-                    * np.sum(
-                        hankel1(
-                            0,
-                            self.k
-                            * np.sqrt(
-                                (self.param_curve.x(t) - x[x_i, x_j]) ** 2
-                                + (self.param_curve.y(t) - y[x_i, x_j]) ** 2
-                            ),
-                        )
-                        * v
-                    )
-                )
-                U[x_i, x_j] = 1 * U_
+        x_t = self.param_curve.x(t).astype(np.complex128, copy=False)
+        y_t = self.param_curve.y(t).astype(np.complex128, copy=False)
+        dx = x_t[:, None, None] - x[None, :, :]
+        dy = y_t[:, None, None] - y[None, :, :]
+        R = np.sqrt(dx**2 + dy**2)
+        H = hankel1(0, self.k * R)
+        U = (np.pi / self.n) * np.sum(H * v[:, None, None], axis=0)
 
         return U
+        return 1j / 4 * U 
+        # return U
 
 
 # Visualize intensity
@@ -220,7 +216,7 @@ class Solution:
 if __name__ == "__main__":
     x_min, x_max, y_min, y_max = -100.0, 100.0, -100.0, 100.0
 
-    sol = Solution(LineSegment(-50, 75, -50, -75), csp_feed_angle=180, n=100)
+    sol = Solution(LineSegment(-100, 0, 0, -100), csp_feed_angle=180, n=100)
     # sol = Solution(ArcSegment(-75, -75, -50, 50), csp_feed_angle=180)
     Z = sol.solve()
 
@@ -232,6 +228,7 @@ if __name__ == "__main__":
         aspect="equal",
         cmap="jet",
     )
+    # plt.clim(-70, 0)
     plt.colorbar(label=r"$|U_0(x,y)|^2$")
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
