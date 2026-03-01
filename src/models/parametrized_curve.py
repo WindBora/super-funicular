@@ -68,24 +68,24 @@ class LineSegment(ParamCurve):
     Mapping: s=(t+1)/2 in [0,1], then P(t)=P0 + s*(P1-P0).
     """
 
-    x0: float
-    y0: float
     x1: float
     y1: float
+    x2: float
+    y2: float
 
     def x(self, t: FloatArray) -> FloatArray:
         s = (t + 1.0) / 2
-        return self.x0 + s * (self.x1 - self.x0)
+        return self.x1 + s * (self.x2 - self.x1)
 
     def y(self, t: FloatArray) -> FloatArray:
         s = (t + 1.0) / 2
-        return self.y0 + s * (self.y1 - self.y0)
+        return self.y1 + s * (self.y2 - self.y1)
 
     def x_der(self, t: FloatArray) -> FloatArray:
-        return (self.x1 - self.x0) / 2
+        return (self.x2 - self.x1) / 2
 
     def y_der(self, t: FloatArray) -> FloatArray:
-        return (self.y1 - self.y0) / 2
+        return (self.y2 - self.y1) / 2
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,7 @@ def hankel1(v: np.ndarray, z: np.ndarray) -> np.ndarray:
 #     return j0(z) + y0(z) * 1j
 
 
-csp_feed_length = 0.001 # wave_lenght # b, CSP
+csp_feed_length = 5 # wave_lenght # b, CSP
 csp_feed_length_half = csp_feed_length / 2
 
 

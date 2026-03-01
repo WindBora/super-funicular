@@ -94,7 +94,8 @@ class Solution:
         U = self.csp_secondary_field(X, Y)
         U_abs = np.abs(U) ** 2
 
-        Z = U0_abs + U_abs  # Full solution
+        # Z = U0_abs + U_abs  # Full solution
+        Z = np.abs(U0 + U) ** 2  # Full solution
         # Z = U0_abs # Incident
         # Z = U_abs # Dispersion
 
@@ -123,7 +124,7 @@ class Solution:
         R = np.sqrt((x - self.r_cs[0]) ** 2 + (y - self.r_cs[1]) ** 2)
 
         result = (
-            self.k
+            -self.k
             * hankel1(1, self.k * R)
             * self.param_curve.R_t0_der_coord(t, self.r_cs)
         )
@@ -160,7 +161,7 @@ class Solution:
         return result
 
     def f_t_0_arr(self, t_0: np.ndarray):
-        result = self.csp_incident_field_parametrized_t_arr_derivative(t_0)
+        result = -self.csp_incident_field_parametrized_t_arr_derivative(t_0)
         return result
 
     def csp_secondary_field(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -177,11 +178,13 @@ class Solution:
 
         for j in range(self.n - 1):
             for i in range(self.n):
-                A[j, i] = (1 / (t[i] - t_0j[j]) + self.K_t_t0(t[i], t_0j[j])) / self.n
+                A[j, i] = (
+                    np.pi * (1 / (t[i] - t_0j[j]) + self.K_t_t0(t[i], t_0j[j])) / self.n
+                )
             b[j] = f_vector[j]
 
         for i in range(self.n):
-            tmp = self.M_t(t[i]) / self.n
+            tmp = np.pi * self.M_t(t[i]) / self.n
             A[self.n - 1, i] = tmp
 
         b[self.n - 1] = self.constant_c()
@@ -194,9 +197,7 @@ class Solution:
             for x_j in range(x.shape[1]):
                 U_ = (
                     np.pi
-                    / self.n  # self.n should be
-                    # * 1j
-                    # / 4
+                    / self.n
                     * np.sum(
                         hankel1(
                             0,
@@ -209,7 +210,7 @@ class Solution:
                         * v
                     )
                 )
-                U[x_i, x_j] = -1 * U_
+                U[x_i, x_j] = 1 * U_
 
         return U
 
