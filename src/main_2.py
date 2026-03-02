@@ -44,8 +44,8 @@ class Solution:
     def __init__(
         self,
         param_curve: ParamCurve,
-        csp_feed_length: float = 0.5,
-        kb: float = 9,
+        csp_feed_length: float = 0.3,
+        kb: float = 2.6,
         csp_feed_angle: float = -90.0,
         n: int = 50,
     ):
@@ -100,10 +100,10 @@ class Solution:
         # Z = U0_abs  # Incident
         # Z = U_abs # Dispersion
 
-        # q = np.abs(U0 + U)
+        q = np.abs(U0 + U)
         # q = np.abs(U0)
 
-        # Z = 20 * np.log10(q / np.max(q))
+        Z = 20 * np.log10(q / np.max(q))
 
         return Z
 
@@ -137,26 +137,38 @@ class Solution:
 
         return result
 
-    def constant_c(self) -> float:
-        result, err = quad(
-            lambda t: self.csp_incident_field_from_t(t) / np.sqrt(1 - t**2),
-            -1,
-            1,
-            complex_func=True,
-            limit=200,
-        )
+    # def constant_c(self) -> float:
+    #     result, err = quad(
+    #         lambda t: self.csp_incident_field_from_t(t) / np.sqrt(1 - t**2),
+    #         -1,
+    #         1,
+    #         complex_func=True,
+    #         limit=200,
+    #     )
+    #     return -result
+
+    def constant_c(self, t: np.ndarray) -> float:
+        result = np.pi * np.sum(self.csp_incident_field_from_t(t)) / self.n
         return -result
 
-    def M_t(self, t: float) -> float:
-        result, err = quad(
-            lambda t_0: hankel1(0, self.k * self.param_curve.R(t, t_0))
-            / np.sqrt(1 - t_0**2),
-            -1,
-            1,
-            complex_func=True,
-            limit=200,
-        )
-        return result
+    # def M_t(self, t: float) -> float:
+    #     result, err = quad(
+    #         lambda t_0: hankel1(0, self.k * self.param_curve.R(t, t_0))
+    #         / np.sqrt(1 - t_0**2),
+    #         -1,
+    #         1,
+    #         complex_func=True,
+    #         limit=200,
+    #     )
+    #     return result
+    
+    def M_t(self, t: np.ndarray, ti: float) -> float:
+        result = 0
+        for i in range(t.shape[0]):
+            if ti == t[i]:
+                continue
+            result += hankel1(0, self.k * self.param_curve.R(ti, t[i]))
+        return np.pi * result / self.n
 
     def K_t_t0(
         self, t: float | np.ndarray, t_0: float | np.ndarray
@@ -190,10 +202,10 @@ class Solution:
             b[j] = f_vector[j]
 
         for i in range(self.n):
-            tmp = self.M_t(t[i]) / self.n
+            tmp = self.M_t(t, t[i]) / self.n
             A[self.n - 1, i] = tmp
 
-        b[self.n - 1] = self.constant_c()
+        b[self.n - 1] = self.constant_c(t)
 
         v = np.linalg.solve(A, b)
         self.v = v
@@ -206,8 +218,8 @@ class Solution:
         H = hankel1(0, self.k * R)
         U = (np.pi / self.n) * np.sum(H * v[:, None, None], axis=0)
 
-        return U
-        return 1j / 4 * U 
+        # return U
+        return -1j / 4 * U 
         # return U
 
 
@@ -228,8 +240,8 @@ if __name__ == "__main__":
         aspect="equal",
         cmap="jet",
     )
-    # plt.clim(-70, 0)
-    plt.colorbar(label=r"$|U_0(x,y)|^2$")
+    plt.clim(-30, 0)
+    plt.colorbar(label=r"$|U(x,y)|^2$")
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
     plt.title("CSP Incident Field Intensity Heatmap")

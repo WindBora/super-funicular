@@ -9,7 +9,7 @@ def csp_incident_field(x, y, k, rcs):
     y = np.asarray(y, dtype=np.complex128)
 
     R = np.sqrt((x - rcs[0])**2 + (y - rcs[1])**2)
-    return hankel1(1, k * R)
+    return hankel1(0, k * R)
 
 def hankel1(v: np.ndarray, z: np.ndarray) -> np.ndarray:
     return jv(v, z) + yv(v, z) * 1j
@@ -46,7 +46,8 @@ X, Y = np.meshgrid(xs, ys)
 U0 = csp_incident_field(X, Y, wave_number, rcs)
 
 # Visualize intensity
-Z = np.abs(U0)**2
+# Z = np.abs(U0)**2
+Z = U0.real
 
 plt.figure(figsize=(7, 5.5))
 plt.imshow(
