@@ -47,7 +47,7 @@ class Solution:
         csp_feed_length: float = 0.3,
         kb: float = 2.6,
         csp_feed_angle: float = -90.0,
-        n: int = 50,
+        n: int = 500,
     ):
         self.param_curve = param_curve
         self.csp_feed_length = csp_feed_length
@@ -94,18 +94,47 @@ class Solution:
         U = self.csp_secondary_field(X, Y)
         U_abs = np.abs(U) ** 2
 
+        self.verify()
+
         # Z = U0_abs + U_abs  # Full solution
         Z = np.abs(U0 + U) ** 2  # Full solution
-        # Z = np.abs(U0 + U)  # Full solution
+        # Z = U0 #+ U - U0  # Full solution
         # Z = U0_abs  # Incident
         # Z = U_abs # Dispersion
 
         q = np.abs(U0 + U)
         # q = np.abs(U0)
 
-        Z = 20 * np.log10(q / np.max(q))
+        Z2 = 20 * np.log10(q)
 
-        return Z
+        return Z, U_abs, U0_abs, Z2
+
+    def verify(self):
+        t_0 = self.t_0j
+        x = np.asarray(self.param_curve.x(t_0), dtype=np.complex128)
+        y = np.asarray(self.param_curve.y(t_0), dtype=np.complex128)
+        exact_sol = self.csp_incident_field(x, y)
+
+        X, Y = np.meshgrid(x, y, sparse=True)
+        # approximate_result =
+        # for t_0i in t_0:
+        #     xi = np.asarray(self.param_curve.x(t_0i), dtype=np.complex128)
+        #     yi = np.asarray(self.param_curve.y(t_0i), dtype=np.complex128)
+        #     result = 0
+        #     for t_i in self.t:
+        #         result +=
+
+        x_t = self.param_curve.x(self.t).astype(np.complex128, copy=False)
+        y_t = self.param_curve.y(self.t).astype(np.complex128, copy=False)
+        dx = x_t[:, None, None] - X[None, :, :]
+        dy = y_t[:, None, None] - Y[None, :, :]
+        R = np.sqrt(dx**2 + dy**2)
+        H = hankel1(0, self.k * R)
+        U = 1j / 4 * (np.pi / self.n) * np.sum(H * self.v[:, None, None], axis=0)
+
+        print("done")
+
+        pass
 
     def csp_incident_field(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
         x = np.asarray(x, dtype=np.complex128)
@@ -130,52 +159,35 @@ class Solution:
         R = np.sqrt((x - self.r_cs[0]) ** 2 + (y - self.r_cs[1]) ** 2)
 
         result = (
-            -self.k
+            -1
+            * self.k
             * hankel1(1, self.k * R)
             * self.param_curve.R_t0_der_coord(t, self.r_cs)
         )
 
         return result
 
-    # def constant_c(self) -> float:
-    #     result, err = quad(
-    #         lambda t: self.csp_incident_field_from_t(t) / np.sqrt(1 - t**2),
-    #         -1,
-    #         1,
-    #         complex_func=True,
-    #         limit=200,
-    #     )
-    #     return -result
-
     def constant_c(self, t: np.ndarray) -> float:
         result = np.pi * np.sum(self.csp_incident_field_from_t(t)) / self.n
         return -result
 
-    # def M_t(self, t: float) -> float:
-    #     result, err = quad(
-    #         lambda t_0: hankel1(0, self.k * self.param_curve.R(t, t_0))
-    #         / np.sqrt(1 - t_0**2),
-    #         -1,
-    #         1,
-    #         complex_func=True,
-    #         limit=200,
-    #     )
-    #     return result
-    
     def M_t(self, t: np.ndarray, ti: float) -> float:
         result = 0
         for i in range(t.shape[0]):
             if ti == t[i]:
                 continue
-            result += hankel1(0, self.k * self.param_curve.R(ti, t[i]))
-        return np.pi * result / self.n
+            result += hankel1(0, self.k * self.param_curve.R(ti, t[i])) - 2j / np.pi * np.log(np.abs(ti - t[i]))
+        return -2j * np.log(2) + np.pi * result / self.n
 
     def K_t_t0(
         self, t: float | np.ndarray, t_0: float | np.ndarray
     ) -> float | np.ndarray:
-        result = -1 / (t - t_0) - self.k * hankel1(
-            1, self.k * self.param_curve.R(t, t_0)
-        ) * self.param_curve.R_t0_der(t, t_0)
+        result = -1 / (t - t_0) - (
+            1
+            * self.k
+            * hankel1(1, self.k * self.param_curve.R(t, t_0))
+            * self.param_curve.R_t0_der(t, t_0)
+        )
         return result
 
     def f_t_0_arr(self, t_0: np.ndarray):
@@ -198,11 +210,11 @@ class Solution:
 
         for j in range(self.n - 1):
             for i in range(self.n):
-                A[j, i] = (1 / (t[i] - t_0j[j]) + self.K_t_t0(t[i], t_0j[j])) / self.n
+                A[j, i] = 1 / 2j * np.pi * (1 / (t[i] - t_0j[j]) + self.K_t_t0(t[i], t_0j[j])) / self.n
             b[j] = f_vector[j]
 
         for i in range(self.n):
-            tmp = self.M_t(t, t[i]) / self.n
+            tmp = 1 / 2j * np.pi * self.M_t(t, t[i]) / self.n
             A[self.n - 1, i] = tmp
 
         b[self.n - 1] = self.constant_c(t)
@@ -216,10 +228,10 @@ class Solution:
         dy = y_t[:, None, None] - y[None, :, :]
         R = np.sqrt(dx**2 + dy**2)
         H = hankel1(0, self.k * R)
-        U = (np.pi / self.n) * np.sum(H * v[:, None, None], axis=0)
+        U = (1 / self.n) * np.sum(H * v[:, None, None], axis=0)
 
         # return U
-        return -1j / 4 * U 
+        return -1j / 4 * U
         # return U
 
 
@@ -228,22 +240,52 @@ class Solution:
 if __name__ == "__main__":
     x_min, x_max, y_min, y_max = -100.0, 100.0, -100.0, 100.0
 
-    sol = Solution(LineSegment(-100, 0, 0, -100), csp_feed_angle=180, n=100)
+    sol = Solution(LineSegment(-60, -100, -60, 100), csp_feed_angle=180, n=200)
     # sol = Solution(ArcSegment(-75, -75, -50, 50), csp_feed_angle=180)
-    Z = sol.solve()
+    Z, U_sc, U_0, Z2 = sol.solve()
 
-    plt.figure(figsize=(7, 5.5))
-    plt.imshow(
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+
+    ax1.imshow(
         Z,
         extent=[x_min, x_max, y_min, y_max],
         origin="lower",
         aspect="equal",
         cmap="jet",
     )
-    plt.clim(-30, 0)
-    plt.colorbar(label=r"$|U(x,y)|^2$")
-    plt.xlabel("x [m]")
-    plt.ylabel("y [m]")
-    plt.title("CSP Incident Field Intensity Heatmap")
-    plt.tight_layout()
+    # fig.colorbar(ax1, label=r"$|U(x,y)|^2$")
+    # ax1.clim(-20, 0)
+    # ax1.xlabel("x [m]")
+    # ax1.ylabel("y [m]")
+    # ax1.title("CSP Incident Field Intensity Heatmap")
+
+    ax3.imshow(
+        U_sc,
+        extent=[x_min, x_max, y_min, y_max],
+        origin="lower",
+        aspect="equal",
+        cmap="jet",
+    )
+    # plt.clim(-20, 0)
+
+    ax4.imshow(
+        U_0,
+        extent=[x_min, x_max, y_min, y_max],
+        origin="lower",
+        aspect="equal",
+        cmap="jet",
+    )
+    # plt.clim(-20, 0)
+
+    ax2.imshow(
+        Z2,
+        extent=[x_min, x_max, y_min, y_max],
+        origin="lower",
+        aspect="equal",
+        cmap="jet",
+    )
+    # plt.clim(-20, 0)
+
+    fig.tight_layout()
+
     plt.show()

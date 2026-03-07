@@ -57,8 +57,8 @@ class ParamCurve(ABC):
         yt = self.y(t)
         xt0 = self.x(t0)
         yt0 = self.y(t0)
-        result = ((xt0 - xt) * self.x_der(t0) + (yt0 - yt) * self.y_der(t0)) / np.sqrt(
-            (xt - xt0) ** 2 + (yt - yt0) ** 2
+        result = ((xt0 - xt) * self.x_der(t0) + (yt0 - yt) * self.y_der(t0)) / (
+            np.sqrt((xt - xt0) ** 2 + (yt - yt0) ** 2)
         )
         return result
 
