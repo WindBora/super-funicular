@@ -45,7 +45,7 @@ class Solution:
         self,
         param_curve: ParamCurve,
         csp_feed_length: float = 0.3,
-        kb: float = 2.6,
+        kb: float = 9,
         csp_feed_angle: float = -90.0,
         n: int = 500,
     ):
@@ -132,6 +132,11 @@ class Solution:
         H = hankel1(0, self.k * R)
         U = 1j / 4 * (np.pi / self.n) * np.sum(H * self.v[:, None, None], axis=0)
 
+        U_my = U[:, 0]
+
+        # print(exact_sol)
+        # print(U_my)
+        print(exact_sol - U_my)
         print("done")
 
         pass
@@ -206,15 +211,15 @@ class Solution:
         # Ax = b
         A = np.zeros((self.n, self.n), dtype=np.complex128)
         b = np.zeros((self.n,), dtype=np.complex128)
-        f_vector = self.f_t_0_arr(t_0j)
+        f_vector = -self.f_t_0_arr(t_0j)
 
         for j in range(self.n - 1):
             for i in range(self.n):
-                A[j, i] = 1 / 2j * np.pi * (1 / (t[i] - t_0j[j]) + self.K_t_t0(t[i], t_0j[j])) / self.n
+                A[j, i] = 1 / 2j * (1 / (t[i] - t_0j[j]) + self.K_t_t0(t[i], t_0j[j])) / self.n
             b[j] = f_vector[j]
 
         for i in range(self.n):
-            tmp = 1 / 2j * np.pi * self.M_t(t, t[i]) / self.n
+            tmp = 1 / 2j * self.M_t(t, t[i]) / self.n
             A[self.n - 1, i] = tmp
 
         b[self.n - 1] = self.constant_c(t)
@@ -228,7 +233,7 @@ class Solution:
         dy = y_t[:, None, None] - y[None, :, :]
         R = np.sqrt(dx**2 + dy**2)
         H = hankel1(0, self.k * R)
-        U = (1 / self.n) * np.sum(H * v[:, None, None], axis=0)
+        U = (np.pi / self.n) * np.sum(H * v[:, None, None], axis=0)
 
         # return U
         return -1j / 4 * U
@@ -240,9 +245,9 @@ class Solution:
 if __name__ == "__main__":
     x_min, x_max, y_min, y_max = -100.0, 100.0, -100.0, 100.0
 
-    sol = Solution(LineSegment(-60, -100, -60, 100), csp_feed_angle=180, n=200)
+    sol = Solution(LineSegment(-20, -100, -20, 100), csp_feed_angle=180, n=200)
     # sol = Solution(ArcSegment(-75, -75, -50, 50), csp_feed_angle=180)
-    Z, U_sc, U_0, Z2 = sol.solve()
+    Z, U_sc, U_0, Z2 = sol.solve(x_min, x_max, y_min, y_max)
 
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
 
