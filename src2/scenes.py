@@ -19,13 +19,41 @@ from .geometry import (
     ellipse_foci,
     symmetric_bounds,
 )
-from .solver import ComplexSourcePoint, MultiReflectorMDS
+from .solver import ComplexSourcePoint, MultiReflectorMDS, PlaneWave
+
+
+def build_incident_field(
+    *,
+    incident_kind: str,
+    k: float,
+    beta_deg: float,
+    kb: float,
+    x0: float | None = None,
+    y0: float | None = None,
+):
+    """Build the selected incident-field model for a scene."""
+
+    beta_rad = np.deg2rad(beta_deg)
+    if incident_kind == "plane_wave":
+        return PlaneWave(k=k, beta_rad=beta_rad)
+    if incident_kind == "csp":
+        if x0 is None or y0 is None:
+            raise ValueError("csp incident requires explicit x0 and y0 coordinates")
+        return ComplexSourcePoint(
+            k=k,
+            x0=float(x0),
+            y0=float(y0),
+            b=kb / k,
+            beta_rad=beta_rad,
+        )
+    raise ValueError(f"Unsupported incident_kind: {incident_kind}")
 
 
 def build_single_shifted_parabolic_example(
     n: int,
     aperture: float,
     focal_ratio: float,
+    incident_kind: str,
     kb: float,
     beta_deg: float,
 ) -> MultiReflectorMDS:
@@ -53,14 +81,36 @@ def build_single_shifted_parabolic_example(
         x_focus=0.0,
         y_focus=0.0,
     )
-    csp = ComplexSourcePoint(
+    incident = build_incident_field(
+        incident_kind=incident_kind,
         k=k,
+        beta_deg=beta_deg,
+        kb=kb,
         x0=0.0,
         y0=0.0,
-        b=kb / k,
-        beta_rad=np.deg2rad(beta_deg),
     )
-    return MultiReflectorMDS(reflectors=[curve], incident=csp, n=n)
+    return MultiReflectorMDS(reflectors=[curve], incident=incident, n=n)
+
+
+def build_free_space_example(
+    n: int,
+    incident_kind: str,
+    kb: float,
+    beta_deg: float,
+) -> MultiReflectorMDS:
+    """Build a scene with no reflectors, only the selected incident field."""
+
+    wavelength = 1.0
+    k = 2.0 * np.pi / wavelength
+    incident = build_incident_field(
+        incident_kind=incident_kind,
+        k=k,
+        beta_deg=beta_deg,
+        kb=kb,
+        x0=0.0,
+        y0=0.0,
+    )
+    return MultiReflectorMDS(reflectors=[], incident=incident, n=n)
 
 
 def sinusoidal_strip_target_point(
@@ -108,6 +158,7 @@ def build_sinusoidal_strip_example(
     strip_feed_x: float | None,
     strip_feed_y: float | None,
     strip_target_x: float | None,
+    incident_kind: str,
     kb: float,
     beta_deg: float,
 ) -> MultiReflectorMDS:
@@ -145,15 +196,6 @@ def build_sinusoidal_strip_example(
     wavelength = 1.0
     k = 2.0 * np.pi / wavelength
     phase_rad = float(np.deg2rad(strip_phase_deg))
-    target_x, target_y = sinusoidal_strip_target_point(
-        strip_center_x=strip_center_x,
-        strip_base_y=strip_base_y,
-        strip_amplitude=strip_amplitude,
-        strip_frequency=strip_frequency,
-        strip_phase_deg=strip_phase_deg,
-        strip_target_x=strip_target_x,
-    )
-
     feed_x = strip_center_x if strip_feed_x is None else float(strip_feed_x)
     if strip_feed_y is None:
         feed_y = strip_base_y + max(0.35 * strip_length, 4.0 * abs(strip_amplitude), 8.0)
@@ -168,18 +210,20 @@ def build_sinusoidal_strip_example(
         frequency=float(strip_frequency),
         phase_rad=phase_rad,
     )
-    csp = ComplexSourcePoint(
+    incident = build_incident_field(
+        incident_kind=incident_kind,
         k=k,
+        beta_deg=beta_deg,
+        kb=kb,
         x0=feed_x,
         y0=feed_y,
-        b=kb / k,
-        beta_rad=np.deg2rad(beta_deg),
     )
-    return MultiReflectorMDS(reflectors=[curve], incident=csp, n=n)
+    return MultiReflectorMDS(reflectors=[curve], incident=incident, n=n)
 
 
 def build_confocal_elliptic_example(
     n: int,
+    incident_kind: str,
     kb: float,
     beta_deg: float,
     ellipse_upper_mode: str,
@@ -331,16 +375,17 @@ def build_confocal_elliptic_example(
     else:
         raise ValueError(f"Unsupported ellipse_upper_mode: {ellipse_upper_mode}")
 
-    csp = ComplexSourcePoint(
+    incident = build_incident_field(
+        incident_kind=incident_kind,
         k=k,
+        beta_deg=beta_deg,
+        kb=kb,
         x0=feed_x,
         y0=feed_y,
-        b=kb / k,
-        beta_rad=np.deg2rad(beta_deg),
     )
     return MultiReflectorMDS(
         reflectors=[lower_reflector, upper_reflector],
-        incident=csp,
+        incident=incident,
         n=n,
     )
 
@@ -350,6 +395,7 @@ def build_cassegrain_example(
     main_aperture: float,
     sub_aperture: float,
     focal_ratio: float,
+    incident_kind: str,
     kb: float,
     beta_deg: float,
     main_vertex_x: float,
@@ -429,16 +475,17 @@ def build_cassegrain_example(
         branch=sub_branch,
     )
 
-    csp = ComplexSourcePoint(
+    incident = build_incident_field(
+        incident_kind=incident_kind,
         k=k,
+        beta_deg=beta_deg,
+        kb=kb,
         x0=feed_x_resolved,
         y0=0.0,
-        b=kb / k,
-        beta_rad=np.deg2rad(beta_deg),
     )
     return MultiReflectorMDS(
         reflectors=[main_curve, sub_curve],
-        incident=csp,
+        incident=incident,
         n=n,
     )
 
@@ -447,6 +494,7 @@ def build_two_bracket_reflector_example(
     n: int,
     aperture: float,
     focal_ratio: float,
+    incident_kind: str,
     kb: float,
     beta_deg: float,
     secondary_scale: float,
@@ -495,16 +543,17 @@ def build_two_bracket_reflector_example(
         x_shift=large_x,
         y_shift=0.0,
     )
-    csp = ComplexSourcePoint(
+    incident = build_incident_field(
+        incident_kind=incident_kind,
         k=k,
+        beta_deg=beta_deg,
+        kb=kb,
         x0=0.0,
         y0=0.0,
-        b=kb / k,
-        beta_rad=np.deg2rad(beta_deg),
     )
     return MultiReflectorMDS(
         reflectors=[small_right, large_left],
-        incident=csp,
+        incident=incident,
         n=n,
     )
 
@@ -516,6 +565,8 @@ def resolved_beta_deg(args: argparse.Namespace) -> float:
         return args.beta_deg
     if args.scene == "single_shifted":
         return 180.0
+    if args.scene == "free_space":
+        return 0.0
     if args.scene == "cassegrain":
         return 0.0
     if args.scene == "two_brackets":
@@ -550,11 +601,19 @@ def build_scene(args: argparse.Namespace) -> MultiReflectorMDS:
     """Build the solver object corresponding to the parsed command-line options."""
 
     beta_deg = resolved_beta_deg(args)
+    if args.scene == "free_space":
+        return build_free_space_example(
+            n=args.n,
+            incident_kind=args.incident_kind,
+            kb=args.kb,
+            beta_deg=beta_deg,
+        )
     if args.scene == "single_shifted":
         return build_single_shifted_parabolic_example(
             n=args.n,
             aperture=args.aperture,
             focal_ratio=args.focal_ratio,
+            incident_kind=args.incident_kind,
             kb=args.kb,
             beta_deg=beta_deg,
         )
@@ -570,12 +629,14 @@ def build_scene(args: argparse.Namespace) -> MultiReflectorMDS:
             strip_feed_x=args.strip_feed_x,
             strip_feed_y=args.strip_feed_y,
             strip_target_x=args.strip_target_x,
+            incident_kind=args.incident_kind,
             kb=args.kb,
             beta_deg=beta_deg,
         )
     if args.scene == "confocal_elliptic":
         return build_confocal_elliptic_example(
             n=args.n,
+            incident_kind=args.incident_kind,
             kb=args.kb,
             beta_deg=beta_deg,
             ellipse_upper_mode=args.ellipse_upper_mode,
@@ -607,6 +668,7 @@ def build_scene(args: argparse.Namespace) -> MultiReflectorMDS:
             main_aperture=args.aperture,
             sub_aperture=args.sub_aperture,
             focal_ratio=args.focal_ratio,
+            incident_kind=args.incident_kind,
             kb=args.kb,
             beta_deg=beta_deg,
             main_vertex_x=args.main_vertex_x,
@@ -623,6 +685,7 @@ def build_scene(args: argparse.Namespace) -> MultiReflectorMDS:
             n=args.n,
             aperture=args.aperture,
             focal_ratio=args.focal_ratio,
+            incident_kind=args.incident_kind,
             kb=args.kb,
             beta_deg=beta_deg,
             secondary_scale=args.secondary_scale,
@@ -640,6 +703,15 @@ def resolved_plot_window(args: argparse.Namespace) -> tuple[float, float, float,
     y_min = args.y_min
     y_max = args.y_max
 
+    if args.scene == "free_space":
+        if x_min == -5.0:
+            x_min = -10.0
+        if x_max == 25.0:
+            x_max = 10.0
+        if y_min == -15.0:
+            y_min = -10.0
+        if y_max == 15.0:
+            y_max = 10.0
     if args.scene == "confocal_elliptic":
         if x_min == -5.0:
             x_min = -12.0
