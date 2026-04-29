@@ -1045,7 +1045,11 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
             self.aux_quad_order = max(4 * self.n, 128)
         if self.aux_quad_order < 4:
             raise ValueError("aux_quad_order must be at least 4")
+        # Step 4 in the derivation notes asks for high-accuracy weighted quadrature
+        # when evaluating the continuous definitions of M_pq(t_i) and c_p.
         self.aux_nodes = cheb_first_kind(self.aux_quad_order).astype(np.float64)
+        # Gauss-Chebyshev for int_{-1}^1 f(t) * omega(t) dt with omega(t)=1/sqrt(1-t^2)
+        # uses constant weights pi/m at the first-kind Chebyshev roots.
         self.aux_weight = float(np.pi / self.aux_quad_order)
         self.aux_x: list[np.ndarray] = []
         self.aux_y: list[np.ndarray] = []
@@ -1064,17 +1068,21 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
     def _build_tau_nodes(self) -> np.ndarray:
         """Return the paper's second-kind Chebyshev boundary nodes."""
 
+        # Step 3 / Eq. (11): tau_j = cos(j*pi/n), j=1,...,n-1.
         j = np.arange(1, self.n, dtype=np.float64)
         return np.cos(j * np.pi / self.n)
 
     def near_field_weight(self) -> float:
         """Return the paper-normalized near-field quadrature weight."""
 
+        # Near-field postprocessing follows the paper's discrete sum:
+        # U_sc^(n)(r) ~= (1/n) * sum_q sum_i H_0^(1)(k|r-r_q(t_i)|) u_{q,i}.
         return float(1.0 / self.n)
 
     def far_field_prefactor(self) -> complex:
         """Return the paper-normalized far-field prefactor."""
 
+        # Eq. (13): Phi_sc(phi_0) ~= (1/n) * sqrt(2/pi) * exp(-i*pi/4) * sum(...)
         return complex(np.sqrt(2.0 / (np.pi * 1j)) / self.n)
 
     def _paper_k_block(
@@ -1084,6 +1092,8 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
     ) -> np.ndarray:
         """Return the paper kernel samples ``K_pq(t_i, tau_j)``."""
 
+        # Step 4 / Eq. (9): K_pq(t_i, tau_j) is the tau-derivative of the
+        # Hankel kernel, with the explicit Cauchy term removed only for p=q.
         x_source = self.caches.x_t[source_reflector][:, None]
         y_source = self.caches.y_t[source_reflector][:, None]
         x_target = self.caches.x_tau[target_reflector][None, :]
@@ -1106,6 +1116,8 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
     def _paper_m_samples(self, target_reflector: int, source_reflector: int) -> np.ndarray:
         """Return the supplementary-kernel samples ``M_pq(t_i)``."""
 
+        # Step 4 / Eq. (10): M_pq(t_i) is still a continuous weighted integral
+        # in tau, so we evaluate it by a separate high-order Chebyshev rule.
         x_source = self.caches.x_t[source_reflector][:, None]
         y_source = self.caches.y_t[source_reflector][:, None]
         x_target = self.aux_x[target_reflector][None, :]
@@ -1118,6 +1130,8 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
         diff = np.abs(self.t_nodes[:, None] - self.aux_nodes[None, :])
         coincident = diff == 0.0
         diff_safe = np.where(coincident, 1.0, diff)
+        # Self M_pp uses the singularity-subtracted formula from the derivation
+        # notes so the remaining integrand is smooth at tau=t_i.
         smooth = hankel1(0, self.k * r) - self.log_singularity_coeff * np.log(diff_safe)
         if np.any(coincident):
             diagonal_limit = 1.0 + self.log_singularity_coeff * (
@@ -1129,6 +1143,7 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
     def _paper_rhs_constant(self, reflector_index: int) -> complex:
         """Return the supplementary right-hand-side constant ``c_p``."""
 
+        # Step 2 / Eq. (8): c_p = -int U_{p,0}(tau) * omega(tau) dtau.
         field = self.incident.boundary_field(self.reflectors[reflector_index], self.aux_nodes)
         return complex(-self.aux_weight * np.sum(field))
 
@@ -1169,6 +1184,7 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
                     )
                     block = k_blocks[(target_reflector, source_reflector)][:, boundary_index].copy()
                     if target_reflector == source_reflector:
+                        # Eq. (11) boundary rows use delta_pq/(t_i-tau_j) + K_pq.
                         diff = self.t_nodes - boundary_nodes[boundary_index]
                         block += 1.0 / diff
                     a[row, col_slice] = block / self.n
@@ -1180,6 +1196,8 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
                     source_reflector * self.n,
                     (source_reflector + 1) * self.n,
                 )
+                # Eq. (11) supplementary row closes the differentiated system
+                # by adding the discrete counterpart of int M_pq(t) v_q(t) omega(t) dt = c_p.
                 a[supplementary_row, col_slice] = (
                     m_samples[(target_reflector, source_reflector)] / self.n
                 )
