@@ -172,7 +172,8 @@ def solve_fdtd(
     This backend is intentionally scoped to plane-wave incidence. It computes a
     real-valued time-domain scattered field with time-varying Dirichlet data on
     the reflector cells, then recovers the complex phasor on the requested plot
-    grid by temporal demodulation.
+    grid by temporal demodulation.  Returned phasors use
+    ``u(r, t) = Re{U(r) exp(-i omega t)}``, matching :mod:`src2.solver`.
     """
 
     if not isinstance(solver.incident, PlaneWave):
@@ -260,6 +261,9 @@ def solve_fdtd(
         ramp_prev = np.sin(0.5 * np.pi * min(1.0, max(step - 1, 0) / ramp_steps)) ** 2
         ramp_curr = np.sin(0.5 * np.pi * min(1.0, step / ramp_steps)) ** 2
         lap = np.zeros_like(u_curr)
+        # For U_inc = exp(+i*phase) and the exp(-i*omega*t) convention,
+        # Re{U_inc exp(-i*omega*t)} = cos(phase - omega*t).  Cosine is even,
+        # so the existing omega*t - phase form is the same physical wave.
         boundary_prev = -ramp_prev * np.cos(omega * t_prev - phase)
         boundary_curr = -ramp_curr * np.cos(omega * t_curr - phase)
         u_prev[reflector_mask] = boundary_prev[reflector_mask]
@@ -286,7 +290,9 @@ def solve_fdtd(
         u_next[reflector_mask] = boundary_next[reflector_mask]
 
         if step >= settle_steps:
-            phasor_acc += u_curr * np.exp(-1j * omega * t_curr)
+            # Multiplication by exp(+i*omega*t) extracts U from
+            # Re{U exp(-i*omega*t)}; the opposite sign would return conj(U).
+            phasor_acc += u_curr * np.exp(1j * omega * t_curr)
 
         u_prev, u_curr = u_curr, u_next
 

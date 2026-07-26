@@ -50,6 +50,15 @@ Here
 k = \omega/c = 2\pi/\lambda.
 ```
 
+The phasor convention is
+
+```math
+u_{\mathrm{phys}}(\mathbf r,t)=\operatorname{Re}\{U(\mathbf r)e^{-i\omega t}\},
+```
+
+so the radiation-condition sign below and the outgoing `H_0^{(1)}` kernel are
+consistent with one another.
+
 For E-polarization, the PEC condition is Dirichlet:
 
 ```math

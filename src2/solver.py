@@ -1,4 +1,10 @@
-"""Incident source and matrix-discretization solver for 2-D reflector problems."""
+"""Incident sources and matrix-discretization solvers for 2-D reflectors.
+
+All frequency-domain fields use the physical-field convention
+``u(r, t) = Re{U(r) exp(-i omega t)}``.  With this convention an outgoing
+cylindrical wave is proportional to ``H_0^(1)(k r)``, and a plane wave that
+propagates along the unit vector ``d`` has phasor ``exp(+i k d . r)``.
+"""
 
 from __future__ import annotations
 
@@ -134,20 +140,26 @@ class ComplexSourcePoint:
 
 @dataclass(frozen=True)
 class PlaneWave:
-    """Plane-wave excitation with phase ``exp(-i k (x cos beta + y sin beta))``."""
+    """Plane wave for the suppressed Euler factor ``exp(-i omega t)``.
+
+    The spatial phasor is ``exp(+i k d . r)``, where
+    ``d = (cos(beta), sin(beta))`` is the physical propagation direction.
+    Indeed, a surface of constant real-field phase satisfies
+    ``k d . r - omega t = constant`` and therefore moves along ``+d``.
+    """
 
     k: float
     beta_rad: float
 
     @property
     def direction_x(self) -> float:
-        """Return the x-component of the propagation direction."""
+        """Return the x-component of the physical propagation direction."""
 
         return float(np.cos(self.beta_rad))
 
     @property
     def direction_y(self) -> float:
-        """Return the y-component of the propagation direction."""
+        """Return the y-component of the physical propagation direction."""
 
         return float(np.sin(self.beta_rad))
 
@@ -157,7 +169,9 @@ class PlaneWave:
         x_arr = np.asarray(x, dtype=np.complex128)
         y_arr = np.asarray(y, dtype=np.complex128)
         phase = self.k * (self.direction_x * x_arr + self.direction_y * y_arr)
-        return np.exp(-1j * phase)
+        # The positive spatial sign is required for propagation along +d when
+        # the time-dependent Euler factor is exp(-i * omega * t).
+        return np.exp(1j * phase)
 
     def boundary_field(self, curve: ParamCurve, t: float | np.ndarray) -> np.ndarray:
         """Evaluate the plane wave directly on a reflector curve."""
@@ -174,7 +188,7 @@ class PlaneWave:
         dx_arr = np.asarray(dx, dtype=np.complex128)
         dy_arr = np.asarray(dy, dtype=np.complex128)
         direction_dot_tangent = self.direction_x * dx_arr + self.direction_y * dy_arr
-        return -1j * self.k * field * direction_dot_tangent
+        return 1j * self.k * field * direction_dot_tangent
 
     def rhs_f(self, curve: ParamCurve, t: float | np.ndarray) -> np.ndarray:
         """Return the right-hand side for derivative-based formulations."""

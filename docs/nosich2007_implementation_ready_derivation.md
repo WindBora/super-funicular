@@ -10,6 +10,14 @@ Verification status:
 
 ## 0. Conventions
 
+The physical field is reconstructed with the suppressed Euler factor
+
+```math
+u_{\mathrm{phys}}(\mathbf r,t)=\operatorname{Re}\{U(\mathbf r)e^{-i\omega t}\}.
+```
+
+Under this convention, `H_0^{(1)}(kr)` is outgoing.
+
 ```math
 i^2 = -1.
 ```

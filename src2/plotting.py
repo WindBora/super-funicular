@@ -79,6 +79,54 @@ def _reflector_curves(solution) -> list[tuple[np.ndarray, np.ndarray]]:
     return curves
 
 
+def _plane_wave_arrow_endpoints(
+    incident: PlaneWave,
+    xg: np.ndarray,
+    yg: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Return in-bounds arrow endpoints aligned with physical wave propagation.
+
+    The start is placed on the side from which the wave enters the plot.  The
+    endpoint displacement is a positive multiple of ``(cos(beta), sin(beta))``;
+    this invariant makes the plotted arrow directly testable against the plane
+    wave used by the solver.
+    """
+
+    x_min = float(xg.min())
+    x_max = float(xg.max())
+    y_min = float(yg.min())
+    y_max = float(yg.max())
+    width = x_max - x_min
+    height = y_max - y_min
+    if width <= 0.0 or height <= 0.0:
+        return None
+
+    direction = np.array([incident.direction_x, incident.direction_y], dtype=np.float64)
+    norm = float(np.linalg.norm(direction))
+    if norm == 0.0:
+        return None
+    direction /= norm
+
+    length = 0.18 * min(width, height)
+    margin_x = 0.08 * width
+    margin_y = 0.08 * height
+
+    # A zero component does not identify an incoming side on that axis, so use
+    # a stable corner-adjacent location there.  Nonzero components start at the
+    # opposite plot edge and point inward along the physical wave vector.
+    if abs(direction[0]) <= 1.0e-12:
+        start_x = x_min + margin_x
+    else:
+        start_x = x_min + margin_x if direction[0] > 0.0 else x_max - margin_x
+    if abs(direction[1]) <= 1.0e-12:
+        start_y = y_max - margin_y
+    else:
+        start_y = y_min + margin_y if direction[1] > 0.0 else y_max - margin_y
+    start = np.array([start_x, start_y], dtype=np.float64)
+    end = start + length * direction
+    return start, end
+
+
 def _draw_plane_wave_direction(
     ax,
     solution,
@@ -88,34 +136,17 @@ def _draw_plane_wave_direction(
     color: str,
     outline_color: str,
 ) -> None:
-    """Overlay a short arrow showing the propagation direction of the plane wave."""
+    """Overlay an arrow in the plane wave's physical propagation direction."""
 
     incident = solution.solver.incident
     if not isinstance(incident, PlaneWave):
         return
 
-    x_min = float(xg.min())
-    x_max = float(xg.max())
-    y_min = float(yg.min())
-    y_max = float(yg.max())
-    width = x_max - x_min
-    height = y_max - y_min
-    if width <= 0.0 or height <= 0.0:
+    endpoints = _plane_wave_arrow_endpoints(incident, xg, yg)
+    if endpoints is None:
         return
-
-    direction = np.array([incident.direction_x, incident.direction_y], dtype=np.float64)
-    norm = float(np.linalg.norm(direction))
-    if norm == 0.0:
-        return
-    direction /= norm
-
-    length = 0.18 * min(width, height)
-    margin_x = 0.08 * width
-    margin_y = 0.08 * height
-    center_x = x_min + margin_x + 0.5 * length * abs(direction[0])
-    center_y = y_max - margin_y - 0.5 * length * abs(direction[1])
-    start = np.array([center_x, center_y]) - 0.5 * length * direction
-    end = np.array([center_x, center_y]) + 0.5 * length * direction
+    start, end = endpoints
+    height = float(yg.max() - yg.min())
 
     for line_width, line_color in ((3.6, outline_color), (2.2, color)):
         ax.annotate(
@@ -796,6 +827,15 @@ def plot_near_field(
             t_plot = np.linspace(-1.0, 1.0, 400)
             xc, yc = curve.coords(t_plot)
             ax.plot(xc, yc, color="white", linewidth=1.0)
+        if isinstance(solution.solver.incident, PlaneWave):
+            _draw_plane_wave_direction(
+                ax,
+                solution,
+                xg,
+                yg,
+                color="black",
+                outline_color="white",
+            )
     elif plot_style == "figure":
         fig, ax = plt.subplots(figsize=(6.8, 6.8), constrained_layout=True)
         if is_free_space_plane_wave or is_incident_plane_wave:
@@ -850,6 +890,15 @@ def plot_near_field(
                 markeredgecolor="#00ff66",
                 linestyle="None",
             )
+        if isinstance(solution.solver.incident, PlaneWave):
+            _draw_plane_wave_direction(
+                ax,
+                solution,
+                xg,
+                yg,
+                color="black",
+                outline_color="white",
+            )
         ax.set_xlabel("x")
         ax.set_ylabel("y")
     else:
@@ -893,6 +942,15 @@ def plot_near_field(
                 t_plot = np.linspace(-1.0, 1.0, 400)
                 xc, yc = curve.coords(t_plot)
                 ax.plot(xc, yc, "k-", linewidth=1.0)
+            if isinstance(solution.solver.incident, PlaneWave):
+                _draw_plane_wave_direction(
+                    ax,
+                    solution,
+                    xg,
+                    yg,
+                    color="white",
+                    outline_color="black",
+                )
 
     if save_path:
         fig.savefig(save_path, dpi=200)

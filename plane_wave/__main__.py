@@ -34,8 +34,9 @@ def main() -> None:
     spatial_phase = k * (xx * np.cos(beta) + yy * np.sin(beta))
 
     def plane_wave(time: float) -> np.ndarray:
-        """Return Re{exp(-i * (k(x cos beta + y sin beta) + omega t))}."""
-        complex_wave = np.exp(-1j * (spatial_phase + omega * time))
+        """Return Re{exp(+i k d.r) exp(-i omega t)} for propagation along +d."""
+
+        complex_wave = np.exp(1j * (spatial_phase - omega * time))
         return np.real(complex_wave)
 
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -51,15 +52,15 @@ def main() -> None:
     ax.arrow(
         0,
         0,
-        -1.5 * wavelength * 1e6 * np.cos(beta),
-        -1.5 * wavelength * 1e6 * np.sin(beta),
+        1.5 * wavelength * 1e6 * np.cos(beta),
+        1.5 * wavelength * 1e6 * np.sin(beta),
         width=0.015,
         color="black",
         length_includes_head=True,
     )
     ax.text(
-        -2.3 * wavelength * 1e6,
-        -2.6 * wavelength * 1e6,
+        0.9 * wavelength * 1e6 * np.cos(beta),
+        0.9 * wavelength * 1e6 * np.sin(beta),
         "propagation direction",
         color="black",
     )
@@ -77,7 +78,7 @@ def main() -> None:
         image.set_data(plane_wave(time))
         title.set_text(
             rf"2D plane wave, $\lambda={wavelength_nm:.0f}\,\mathrm{{nm}}$: "
-            rf"$\mathrm{{Re}}\{{e^{{-i(k(x\cos\beta+y\sin\beta)+\omega t)}}\}}$, "
+            rf"$\mathrm{{Re}}\{{e^{{ik(x\cos\beta+y\sin\beta)}}e^{{-i\omega t}}\}}$, "
             rf"$t={time * 1e15:.2f}\,\mathrm{{fs}}$"
         )
         return image, title

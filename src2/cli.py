@@ -181,8 +181,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "compare_paper_mds",
             "compare_all",
         ),
-        default="nystrom",
-        help="Numerical backend. 'mom' uses pulse-basis method of moments, 'mar' uses the analytically regularized Cauchy-SIE system, and 'paper_mds' assembles the Nosich 2007 Eq. (11) MDS system directly. 'compare' runs Nystrom and FDTD, 'compare_mom' runs Nystrom and MoM, 'compare_mar' runs Nystrom and MAR, 'compare_paper_mds' runs Nystrom and the paper-faithful MDS, and 'compare_all' runs Paper MDS, MoM, and MAR on the same plot grid.",
+        default="paper_mds",
+        help="Numerical backend. 'paper_mds' assembles the Nosich 2007 Eq. (11) MDS system directly and is the default. 'nystrom' is the legacy direct-collocation backend. 'mom' uses pulse-basis method of moments, 'mar' uses the analytically regularized Cauchy-SIE system. 'compare' runs legacy Nystrom and FDTD, 'compare_mom' runs legacy Nystrom and MoM, 'compare_mar' runs legacy Nystrom and MAR, 'compare_paper_mds' runs legacy Nystrom and the paper-faithful MDS, and 'compare_all' runs Paper MDS, MoM, and MAR on the same plot grid.",
     )
     parser.add_argument("--n", type=int, default=120, help="Interpolation order.")
     parser.add_argument(
@@ -457,14 +457,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--incident-kind",
         choices=("csp", "plane_wave"),
         default="csp",
-        help="Incident field model. 'plane_wave' uses exp(-i*k*(x*cos(beta)+y*sin(beta))).",
+        help="Incident field model. With the suppressed exp(-i*omega*t) factor, 'plane_wave' uses exp(+i*k*(x*cos(beta)+y*sin(beta))).",
     )
     parser.add_argument("--kb", type=float, default=9.0, help="CSP beam parameter kb. Used only for --incident-kind=csp.")
     parser.add_argument(
         "--beta-deg",
         type=float,
         default=None,
-        help="Incident angle in degrees. For --incident-kind=plane_wave this is the B in exp(-i*k*(x*cos(B)+y*sin(B))). Defaults remain scene-dependent.",
+        help="Physical propagation angle in degrees. For --incident-kind=plane_wave this is beta in exp(+i*k*(x*cos(beta)+y*sin(beta))); defaults remain scene-dependent.",
     )
     parser.add_argument(
         "--small-vertex-x",
@@ -714,7 +714,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(f"kb = {args.kb:.12g}")
         print(f"feed = ({solver.incident.x0:.6f}, {solver.incident.y0:.6f})")
     else:
-        print("plane wave = exp(-i*k*(x*cos(beta)+y*sin(beta)))")
+        print("Euler time factor = exp(-i*omega*t)")
+        print("plane wave = exp(+i*k*(x*cos(beta)+y*sin(beta)))")
     print(f"beta [deg] = {beta_deg:.6f}")
     print(f"field kind = {args.field_kind}")
     if nystrom_solution is not None:
