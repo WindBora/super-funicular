@@ -1,254 +1,182 @@
-# Ukrainian Microwave Week Paper — Work Notes
+# Publication computation and figure pipeline
 
-## What Was Built
+`generate_figures.py` is the reproducible source for the numerical results and
+all five publication figures in this directory. It solves the scattering
+problems, writes the underlying one-dimensional plot data, emits LaTeX result
+macros, applies hard numerical acceptance checks, and can compile the paper.
 
-A complete 5-page IEEEtran conference paper and all supporting Python code for the **Ukrainian Microwave Week** conference. The paper is a full-wave numerical study of plane-wave E-wave scattering by sinusoidal open PEC strips, analyzed via the Method of Discrete Singularities (MDS).
+## One-command regeneration and build
 
----
+From the repository root in PowerShell:
 
-## Paper Overview
-
-**Title:** E-Wave Plane-Wave Scattering by Sinusoidal Open PEC Strips via the Method of Discrete Singularities
-
-**Files:**
-- `main.tex` — 5-page IEEEtran conference paper (compiles to `main.pdf`)
-- `generate_figures.py` — Python script that produces all split figure panels
-- `fig1_flatstrip_near.png`, `fig2_flatstrip_far.png`,
-  `fig3_sinusoidal_near.png`, `fig4_sinusoidal_far.png`,
-  `fig5_amplitude_sweep.png`, `fig6_frequency_sweep.png` — generated figures
-
-**To compile the paper:**
-```bash
-pdflatex main.tex && pdflatex main.tex
+```powershell
+.\.venv\Scripts\python.exe .\ukraine_microwave_week\generate_figures.py --build
 ```
 
-**To regenerate figures:**
-```bash
-python generate_figures.py
+This regenerates every figure and result file, validates them, and then runs
+two `pdflatex` passes on `main.tex`. The build step starts only if all numerical
+and artifact checks pass. `pdflatex` must be on `PATH`.
+
+To regenerate and validate the numerical products without compiling the paper:
+
+```powershell
+.\.venv\Scripts\python.exe .\ukraine_microwave_week\generate_figures.py
 ```
 
----
+A full run currently takes about four minutes on the development machine. The
+script prints timestamped progress during the 41-frequency backend sweep.
 
-## Physical Problem
+## Fixed physical configuration
 
-2D electromagnetic scattering in the E-wave (TM) polarization. A perfectly-conducting (PEC) open arc (sinusoidal strip) is illuminated by a plane wave. The strip is a model for sinusoidal superconducting strips (meander-line resonators, delay lines) at microwave frequencies — PEC is accurate because the London penetration depth satisfies `k·λ_L ≲ 10⁻⁴` at 10 GHz.
+Lengths are nondimensionalized by the strip half-length `L=1`. The symmetric
+five-period strip is
 
-### Setup
-- Wavenumber: `k = 2π` (wavelength `λ = 1`)
-- Euler time factor: `exp(−iωt)` (suppressed in frequency-domain equations)
-- Incidence: `β = π/2` (normal incidence, wave propagates in `+y` direction)
-- Strip: horizontal extent `L = 10λ`, centered at origin, baseline `y = 0`
-- Sinusoidal geometry: `x = (L/2)·t`, `y = A·sin(2π·ν·x)`, `t ∈ [-1, 1]`
-- Parameters swept: amplitude `A ∈ {0.5, 1.0, 1.5, 2.0, 2.5}λ`, spatial frequency `ν ∈ {0.10, 0.15, 0.20, 0.25, 0.30}λ⁻¹`
-
-### Governing Equations
-Scattered field `U` satisfies the 2D Helmholtz equation `(Δ + k²)U = 0` outside the arc, with Dirichlet BC `U|_Γ = −U₀|_Γ`.
-
-**Physical field:** `u_tot(r,t) = Re{U_tot(r) exp(−iωt)}`, where
-`U_tot = U₀ + U`. The compatible outgoing condition is
-`√r(∂U/∂r − ikU) → 0`, and `H₀⁽¹⁾` is therefore the outgoing kernel.
-
-**Plane wave:** `U₀(r) = exp(+ik(x·cos β + y·sin β))`. With the
-`exp(−iωt)` time factor, constant-phase fronts move in the `+β` direction.
-
-**SIE** (after factoring inverse-square-root edge singularity `j|r'(t)| = v(t)(1−t²)^{−1/2}`):
-```
-∫₋₁¹ H₀⁽¹⁾(k·R(t,t₀)) · v(t) / √(1−t²) dt = −U₀(t₀)
+```text
+x(t) = L t
+y(t) = h cos(pi P t)
+-1 <= t <= 1,  P = 5.
 ```
 
-**Total 2D scattering width:**
-```
-σ = (1/π) ∫₀²π |Φ_sc(φ)|² dφ
-```
+It is represented without a separate geometry implementation as:
 
----
-
-## Method: MDS (Method of Discrete Singularities)
-
-MDS is a Nystrom-type discretization of the SIE due to Nosich & Gandel. Key steps:
-
-1. Differentiate the first-kind logarithmic SIE → converts kernel singularity from log-type to Cauchy-type
-2. Add one supplementary integral condition (restores the lost constant)
-3. Collocate at `n−1` second-kind Chebyshev nodes `τⱼ = cos(jπ/n)`, `j = 1, …, n−1`
-
-**Resulting n×n linear system:**
-```
-(1/n) Σᵢ [ v(tᵢ)/(tᵢ − τⱼ) + K(tᵢ, τⱼ)·v(tᵢ) ] = f(τⱼ)
-```
-where `tᵢ = cos((2i−1)π/(2n))` are first-kind Chebyshev roots, `K` is the smooth part of the differentiated Hankel kernel, and
-`f(τ) = −dU₀/dτ = −ik U₀(r(τ)) d̂·r′(τ)`.
-
-Solved by Gaussian elimination. Boundary residuals remain near `10⁻¹³` for
-the Paper-MDS systems used in the figures.
-
-### Why MDS is Good Here
-- Analytically extracts edge singularity → spectral convergence for smooth problems
-- Dense but small system (N = 200 unknowns per reflector)
-- No artificial boundary truncation or absorbing layers needed
-- Validated in literature for parabolic reflector antennas (Nosich & Gandel 2007)
-
----
-
-## Key Physics: Floquet Reference Orders
-
-Angles are measured counterclockwise from `+x`. For normal incidence
-(`β = π/2`) on the infinite periodic continuation of the sinusoidal strip
-with period `Λ = 1/ν`, Floquet theory gives two branches:
-
-```
-φₘᶠ = arccos(m·ν)             forward / +y branch
-φₘᵇ = 360° − arccos(m·ν)      backward / reflected −y branch
-|m·ν| < 1
-```
-
-| ν (λ⁻¹) | m=+1 forward | m=−1 forward | m=+1 reflected | m=−1 reflected |
-|----------|--------------|--------------|----------------|----------------|
-| 0.10     | 84.3°        | 95.7°        | 275.7°         | 264.3°         |
-| 0.15     | 81.4°        | 98.6°        | 278.6°         | 261.4°         |
-| 0.20     | 78.5°        | 101.5°       | 281.5°         | 258.5°         |
-| 0.25     | 75.5°        | 104.5°       | 284.5°         | 255.5°         |
-| 0.30     | 72.5°        | 107.5°       | 287.5°         | 252.5°         |
-
-For `ν = 0.20`, the reflected `m=+2` and `m=−2` references are
-`293.6°` and `246.4°`. The infinite PEC continuation supports the
-reflected branch; the finite strip also produces forward shadow-side
-endpoint diffraction.
-
-For the finite strip, `L·ν` periods = 2 periods at `ν = 0.20`. This broadens each Floquet lobe, so maxima can shift slightly from the periodic-reference angles.
-
----
-
-## Numerical Results
-
-### Flat Strip Benchmark (A = 0, L = 10λ, N = 200)
-
-- Boundary residual: approximately `10⁻¹³`
-- Total scattering width: `σ = 40.0λ`
-
-**N-convergence of σ:**
-
-| N   | σ (λ)  | Rel. change | Residual       |
-|-----|--------|-------------|----------------|
-| 32  | 39.857 | —           | `O(10⁻¹⁴)` |
-| 64  | 39.999 | 3.56 × 10⁻³ | `O(10⁻¹⁴)` |
-| 100 | 40.000 | 2.78 × 10⁻⁵ | `O(10⁻¹⁴)` |
-| 150 | 40.000 | 1.18 × 10⁻⁶ | `O(10⁻¹³)` |
-| 200 | 40.000 | 2.23 × 10⁻⁸ | `O(10⁻¹³)` |
-
-The residual measures algebraic satisfaction of the discrete system; the
-change in `σ` measures convergence of the reported physical observable.
-
-### Sinusoidal Strip (A = 1.5λ, ν = 0.20λ⁻¹)
-
-- Boundary residual: approximately `1.5 × 10⁻¹³`
-- Total scattering width: `σ = 40.011λ`
-- The forward finite-aperture lobe is at `90°`; it is not a reflected order.
-- Strong reflected first-order peaks occur at approximately `258.2°` and
-  `281.7°`, matching the `m=−1` and `m=+1` references `258.5°` and `281.5°`.
-- Weaker reflected second-order structure is organized by the `m=−2` and
-  `m=+2` references `246.4°` and `293.6°`.
-
-### Parametric Sweep (25 cases, all N = 200)
-
-All boundary residuals remain of order `10⁻¹³`.
-
-**Key finding:** Total scattering width `σ` spans `38.940--40.656λ` across
-all 25 `(A, ν)` combinations. The sinusoidal corrugation changes both total
-scattering width and the angular distribution of scattered power.
-
-- Amplitude `A` → controls the relative strength of off-normal lobes
-- Spatial frequency `ν` → controls the Floquet-order reference angles
-
----
-
-## Code Structure
-
-### `generate_figures.py`
-
-**Constants:**
 ```python
-K = 2π          # wavenumber (λ = 1)
-BETA_INC = π/2  # normal incidence (+y direction)
-L = 10.0        # strip length (λ)
-Y_BASE = 0.0    # strip baseline y-coordinate
-N_MDS = 200     # unknowns per reflector
+SinusoidalStrip(
+    x_center=0,
+    y_base=0,
+    length=2*L,
+    amplitude=h,
+    frequency=P/(2*L),
+    phase_rad=pi/2,
+)
 ```
 
-**Key functions:**
+The numerical experiments use a unit-amplitude plane wave propagating along
+`+y`, so `beta=pi/2`. Figure 1 also shows the general arbitrary-incidence
+definition of `beta`. Observation angle `phi` is counterclockwise from `+x`.
 
-| Function | Description |
-|----------|-------------|
-| `make_solver(A, nu, n)` | Creates `SinusoidalStrip` + `PlaneWave` + `MultiReflectorPaperMDS`, returns unsolved solver |
-| `scattering_width(sol)` | σ = (1/π)∫\|Φ_sc\|² dφ, 4096-point trapezoidal integration |
-| `floquet_reference_angles(nu)` | Returns both forward and reflected periodic-reference branches |
-| `fig1_flatstrip()` | Flat strip near-field + far-field; returns σ_flat |
-| `fig2_sinusoidal(A, nu)` | Sinusoidal strip near-field + far-field with Floquet markers |
-| `fig3_pattern_evolution()` | Generates separate reflected-pattern figures for the A and ν sweeps |
-| `print_convergence_table()` | Prints N-convergence of σ for flat strip |
+The representative corrugated case is `h/L=0.10`, `kL=20`, and `P=5`. The
+normal-incidence first grating order becomes propagating at
 
-**Figure layout:**
-- Single-column figures use approximately 3.45-inch widths, `dpi=200`, and `constrained_layout=True`
-- Near-field: `imshow` on regular grid, `cmap='jet'`, dB scale (floor = −45 dB)
-- Far-field: linear amplitude in dB, `20·log10(|Φ_sc|/max|Φ_sc|)`
+```text
+kL = pi P = 5 pi = 15.707963...
+```
 
-### Source modules used (from `src2/`)
+because the period is `Lambda=2L/P` and the first-order condition is
+`2*pi/Lambda <= k`.
 
-**`src2/solver.py`** — `PlaneWave`, `MultiReflectorPaperMDS`, `MDSSolution`
-- `PlaneWave(k, beta_rad)` — incident field class; `.far_field_pattern()` returns zeros (plane wave has no finite 2D far-field amplitude)
-- `MultiReflectorPaperMDS(reflectors, incident, n)` — builds and solves the paper-faithful MDS system
-- `MDSSolution.far_field_pattern(phi, total=False)` — `total=False` gives scattered field only (avoids the delta-function in forward direction for plane wave incidence)
-- `MDSSolution.near_field(xg, yg, total=True)` — evaluates `u_sc + u_inc` on a grid
+## Solvers, orders, and angular sampling
 
-**`src2/geometry.py`** — `SinusoidalStrip`
-- `SinusoidalStrip(x_center, y_base, length, amplitude, frequency, phase_rad)`
-- Parameterization: `x(t) = x_center + (L/2)·t`, `y(t) = y_base + A·sin(2π·ν·(x(t)−x_center) + φ)`
-- Derivatives: `x'(t) = L/2`, `y'(t) = A·cos(arg)·2π·ν·(L/2)`
+- Publication solutions: `DifferentiatedNystromSolver`, `N=512`.
+- Reference solutions: the same formulation, `N_ref=800`.
+- All full-circle far fields and TSCS integrals: 4096 uniformly spaced,
+  endpoint-excluded observation angles.
+- Convergence orders: `32, 48, 64, 96, 128, 192, 256, 384, 512`.
+- Convergence reference comparison: 4096 midpoint samples in Chebyshev angle
+  `theta`.
+- Flat-strip verification sweep: 41 uniformly spaced `kL` values from `0.25`
+  through `20`, inclusive.
+- Independent flat-strip backends: differentiated Nystrom `N=256`, analytical
+  regularization (MAR) `N=256`, and pulse MoM `N=192`.
+- Order-doubling checks at `kL=20`: Nystrom `256 -> 512`, MAR `256 -> 512`,
+  and pulse MoM `192 -> 384`.
 
----
+The smooth edge density is interpolated from its first-kind Gauss-Chebyshev
+nodes. With `t=cos(theta)`, the weighted density norm becomes an ordinary
+theta norm:
 
-## Paper Section Summary
+```text
+error_N = sqrt(
+    sum_j |v_N(cos(theta_j)) - v_800(cos(theta_j))|^2
+    / sum_j |v_800(cos(theta_j))|^2
+)
+```
 
-| Section | Key content |
-|---------|-------------|
-| Abstract | MDS + plane wave + Floquet reference orders + parametric sweep; σ range 38.940--40.656λ |
-| §I Introduction | Sinusoidal PEC strips → HTS devices; PEC approximation; MDS background |
-| §II-A | Plane wave BC + single-layer SIE with edge singularity factoring |
-| §II-B | MDS system (Chebyshev nodes, Cauchy kernel); far-field and σ; strip geometry; forward/reflected Floquet branches |
-| §III-A | Flat strip: Fig. 1 (near + far field) + Table I (N-convergence) |
-| §III-B | A=1.5λ, ν=0.20: Fig. 2 with directional markers; reflected lobes near backward m=±1,±2 references |
-| §III-C | Fig. 3: A controls off-normal lobe strength, ν controls reference angle; σ is not invariant |
-| §IV Conclusion | Two design knobs; σ varies across the sweep; HTS crosstalk application; extensions |
+where `theta_j=(j+1/2)pi/4096`.
 
----
+The physical two-dimensional cross sections are computed only through the
+shared solver helpers:
 
-## Design Decisions and Issues Resolved
+```text
+d sigma / d phi = |Phi_sc(phi)|^2 / k
+sigma = integral_0^(2 pi) (d sigma / d phi) d phi.
+```
 
-### Why L = 10λ (not 24λ as in ICTON paper)?
-For L = 24λ, A = 2.5λ, ν = 0.30, arc length ≈ 116λ → need N ≈ 460 for adequate Chebyshev resolution. N = 200 severely under-resolves. For L = 10λ, worst-case arc ≈ 32.31λ → N = 200 gives ~6.2 nodes/λ, which is adequate.
+All polar panels plot the absolute, non-peak-normalized quantity
+`10 log10[(d sigma/d phi)/L]` on the common range `-30` to `+15 dB`. Its angular
+integral in linear units gives `sigma/L`. The near-field panel plots the
+relative intensity `|U_tot|^2/|U_inc|^2`; unit incidence makes the denominator
+one. The flat-strip geometrical-optics reference is `sigma=4L`.
 
-### Why plane wave instead of CSP beam?
-User explicitly requested plane wave: "Use plane wave, not beam. I am reviewing plane wave only." This changes the physics story from "near-field concentration reflector" to finite-strip plane-wave scattering and Floquet-reference angle analysis.
+## Generated products
 
-### Why σ instead of Q(A,ν) (near-field peak metric)?
-- For plane wave (unlike focused CSP beam), there is no natural "near-field concentration" metric
-- σ is the standard metric for plane-wave scattering
-- σ is not invariant in the current verified sweep; the interesting result is both FAR-FIELD PATTERN redistribution and total-width variation
+- `fig1_geometry.pdf`: geometry, arbitrary-incidence `beta`, and observation
+  angle convention.
+- `fig2_verification.pdf`: weighted density convergence and flat-strip
+  `sigma/(4L)` across all three numerical backends plus GO.
+- `fig3_field_pattern.pdf`: unit-incident relative near-field intensity and the
+  representative absolute differential-TSCS polar pattern.
+- `fig4_amplitude_polar.pdf`: three polar panels at `h/L=0, 0.05, 0.10`, one
+  curve per panel, with `kL=20`.
+- `fig5_frequency_polar.pdf`: three polar panels at `kL=12, 16, 20`, one curve
+  per panel, with `h/L=0.10`.
+- `revision_results.csv`: scalar metrics, convergence data, the 41-point
+  backend sweep, order-doubling checks, every N=512/N=800 reference check, and
+  all plotted polar samples.
+- `revision_results.tex`: deterministic LaTeX macros for manuscript claims.
 
-### Why reflected-hemisphere pattern evolution (Fig. 3) instead of σ_norm heatmap?
-The reflected-hemisphere figure directly shows how the backward Floquet-reference lobes emerge and shift as `A` and `ν` vary. The forward `90°` lobe is retained in the full-pattern figure for directional context.
+The CSV is in tidy long form. Important columns are `dataset`, `series`,
+`x_name`, `x_value`, `y_name`, `y_value`, `n`, `h_over_L`, and `kL`. Polar CSV
+values are the unclipped absolute dB data; the displayed radial range is a
+plotting choice.
 
-### Why Y_BASE = 0 (not −10λ)?
-Flat baseline at y = 0 makes the near-field observation window symmetric and natural. The incident wave comes from below (+y direction), so the strip at y = 0 is in the center of the near-field plots.
+## Hard validation thresholds
 
----
+Generation returns a nonzero exit code if any of these checks fails:
 
-## References Used in Paper
+- the N=512 weighted density error exceeds `1e-4`;
+- the requested convergence sequence is not strictly decreasing;
+- the flat-strip Nystrom `sigma/(4L)` at `kL=20` differs from GO by more than
+  `0.005`;
+- the maximum three-backend absolute spread in `sigma/(4L)` over all 41
+  frequencies is not below `1e-3`;
+- any backend's order-doubling relative TSCS change at `kL=20` is not below
+  `1e-3`;
+- any publication case has an N=512/N=800 relative TSCS change or full complex
+  pattern relative L2 change not below `1e-3`;
+- a sweep value is non-finite/non-positive, or a required artifact is missing.
 
-1. Nosich & Gandel, IEEE TAP 2007 — MDS for parabolic reflectors (key validation ref)
-2. Gandel, J. Math. Sci. 2010 — MDS mathematical foundations
-3. Nosich, Gandel, Magath, Altintas, JOSA-A 2007 — Nystrom multireflector synthesis
-4. Collin, Field Theory of Guided Waves, 1991 — Floquet theory background
-5. Balanis, Advanced Engineering Electromagnetics, 2012 — periodic/Floquet background
-6. Lancaster, Cambridge 1997 — HTS passive devices
-7. Pozar, Microwave Engineering, 2011 — microwave context
-8. Wadell, Artech 1991 — meander-line delay lines
+Algebraic residuals are not used as accuracy evidence. Accuracy is established
+by solution convergence, independent-backend agreement, and order/reference
+comparisons.
+
+## Current accepted metrics
+
+The current deterministic run produced:
+
+| Metric | Value |
+|---|---:|
+| N=512 weighted density error vs N=800 | `2.811422277e-05` |
+| Flat Nystrom `sigma/(4L)` at `kL=20` | `0.9999611930` |
+| Maximum three-backend spread | `1.589017047e-05` |
+| Maximum flat-backend order-doubling change | `5.038187853e-06` |
+| Maximum publication TSCS change, N=512 vs N=800 | `7.533153066e-06` |
+| Maximum publication full-pattern L2 change, N=512 vs N=800 | `2.306639575e-05` |
+
+The TSCS ratios used in the amplitude and frequency discussion are read from
+`revision_results.tex`, not typed into `main.tex`. That generated file defines:
+
+```text
+ConvErrorNFiveTwelve
+FlatTSCSRatioTwenty
+BackendMaxDiff
+AmpTSCSFlat
+AmpTSCSFive
+AmpTSCSTen
+FreqTSCSTwelve
+FreqTSCSSixteen
+FreqTSCSTwenty
+FirstOrderCutoff
+FlatOrderDoublingMaxChange
+ProductionMaxTSCSChange
+ProductionMaxPatternChange
+```

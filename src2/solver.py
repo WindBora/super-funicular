@@ -22,6 +22,123 @@ from .numerics import cheb_first_kind, collocation_nodes_no_overlap, hankel1
 EULER_GAMMA = 0.5772156649015329
 
 
+def _validate_cross_section_inputs(
+    phi: float | np.ndarray,
+    pattern: complex | np.ndarray,
+    k: float,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Validate angular far-field samples shared by the cross-section helpers."""
+
+    try:
+        phi_raw = np.asarray(phi)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("phi must contain real-valued angles") from exc
+    if np.iscomplexobj(phi_raw):
+        raise ValueError("phi must contain real-valued angles")
+    try:
+        phi_arr = np.asarray(phi_raw, dtype=np.float64)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("phi must contain real-valued angles") from exc
+    try:
+        pattern_arr = np.asarray(pattern, dtype=np.complex128)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("pattern must contain numeric far-field samples") from exc
+
+    if phi_arr.ndim > 1 or pattern_arr.ndim > 1:
+        raise ValueError("phi and pattern must be scalars or one-dimensional arrays")
+    if phi_arr.shape != pattern_arr.shape:
+        raise ValueError("phi and pattern must have the same shape")
+    if phi_arr.size == 0:
+        raise ValueError("phi and pattern must contain at least one sample")
+    if not np.all(np.isfinite(phi_arr)):
+        raise ValueError("phi must contain only finite angles")
+    if not np.all(np.isfinite(pattern_arr)):
+        raise ValueError("pattern must contain only finite samples")
+
+    k_arr = np.asarray(k)
+    if k_arr.ndim != 0 or np.iscomplexobj(k_arr) or np.issubdtype(k_arr.dtype, np.bool_):
+        raise ValueError("k must be a positive finite real scalar")
+    try:
+        k_value = float(k_arr)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("k must be a positive finite real scalar") from exc
+    if not np.isfinite(k_value) or k_value <= 0.0:
+        raise ValueError("k must be a positive finite real scalar")
+
+    return phi_arr, pattern_arr, k_value
+
+
+def differential_scattering_cross_section(
+    phi: float | np.ndarray,
+    pattern: complex | np.ndarray,
+    k: float,
+) -> float | np.ndarray:
+    """Return the physical 2-D differential scattering cross section.
+
+    The far-field convention used by this module is
+
+    ``U_sc(r, phi) ~ exp(i k r) * pattern(phi) / sqrt(k r)``.
+
+    Consequently, for a unit-amplitude incident plane wave,
+    ``d sigma / d phi = |pattern(phi)|**2 / k``.  The result has units of
+    length.  ``phi`` and ``pattern`` may be matching scalars or matching
+    one-dimensional arrays; all samples and the positive real wavenumber
+    ``k`` must be finite.
+    """
+
+    _, pattern_arr, k_value = _validate_cross_section_inputs(phi, pattern, k)
+    return np.abs(pattern_arr) ** 2 / k_value
+
+
+def total_scattering_cross_section(
+    phi: np.ndarray,
+    pattern: np.ndarray,
+    k: float,
+) -> float:
+    """Integrate the physical 2-D scattering cross section over a full circle.
+
+    Both strictly increasing endpoint-included grids (for example
+    ``linspace(0, 2*pi, M)``) and uniform endpoint-excluded periodic grids
+    (``linspace(0, 2*pi, M, endpoint=False)``) are accepted.  For the latter,
+    the closing interval from the last angle back to the first is included in
+    the periodic trapezoidal rule.  Partial-circle and nonuniform
+    endpoint-excluded grids are rejected to prevent silent under-integration.
+    """
+
+    phi_arr, pattern_arr, k_value = _validate_cross_section_inputs(phi, pattern, k)
+    if phi_arr.ndim != 1 or phi_arr.size < 2:
+        raise ValueError("total cross section requires at least two one-dimensional samples")
+
+    steps = np.diff(phi_arr)
+    if np.any(steps <= 0.0):
+        raise ValueError("phi must be strictly increasing")
+
+    differential = np.abs(pattern_arr) ** 2 / k_value
+    two_pi = 2.0 * np.pi
+    span = float(phi_arr[-1] - phi_arr[0])
+    angle_rtol = 1.0e-10
+    angle_atol = 1.0e-12
+
+    if np.isclose(span, two_pi, rtol=angle_rtol, atol=angle_atol):
+        # ``numpy.trapezoid`` was introduced in NumPy 2.0.  Retain the same
+        # calculation on older supported environments without changing the
+        # public API or the angular-grid rules above.
+        trapezoid = getattr(np, "trapezoid", np.trapz)
+        return float(trapezoid(differential, phi_arr))
+
+    step = float(steps[0])
+    if not np.allclose(steps, step, rtol=angle_rtol, atol=angle_atol):
+        raise ValueError(
+            "an endpoint-excluded phi grid must be uniformly spaced over 2*pi"
+        )
+    if not np.isclose(span + step, two_pi, rtol=angle_rtol, atol=angle_atol):
+        raise ValueError("phi must cover one complete 2*pi angular period")
+
+    # Adding the periodic closing trapezoid to the ordinary trapezoidal rule
+    # reduces to this constant-spacing sum.
+    return float(step * np.sum(differential))
+
+
 class IncidentField(Protocol):
     """Protocol implemented by incident-field models used by the solver."""
 
@@ -228,9 +345,15 @@ class MDSSolution:
     t_nodes, tau_nodes:
         Quadrature and collocation parameter nodes.
     v_nodes:
-        Edge-regularized current samples for each reflector.
+        Edge-regularized current samples for each reflector.  For
+        :class:`DifferentiatedNystromSolver`, these are samples of the
+        publication density ``v(t)``: the pi-scaled smooth density used by its
+        ``1/N`` system and field sums (rather than the unscaled density used
+        with ``pi/N`` quadrature).
     physical_current_nodes:
-        Recovered physical current samples after dividing by the weight factors.
+        Recovered physical current samples after removing the edge and metric
+        factors.  The differentiated Nystrom backend also removes the factor
+        of pi carried by its scaled ``v_nodes``.
     boundary_residual_max:
         Maximum absolute residual of the discretized boundary equation.
     """
@@ -1033,17 +1156,29 @@ class MultiReflectorMAR(MultiReflectorMDS):
         return a, b
 
 
-class MultiReflectorPaperMDS(MultiReflectorMDS):
-    """Direct implementation of the paper's Eq. (11) MDS linear system.
+class DifferentiatedNystromSolver(MultiReflectorMDS):
+    """Differentiated Nystrom solver for the publication's open-strip SIE.
 
-    This backend follows the derivation notes literally:
+    This is the canonical publication-facing name for the backend historically
+    called :class:`MultiReflectorPaperMDS`.  ``v_nodes`` in its returned
+    :class:`MDSSolution` stores the manuscript's smooth edge density ``v(t)``.
+    If ``v_base`` denotes the unscaled density used by the parent backend,
+    then ``v(t) = pi * v_base(t)``.  The physical edge-singular line density
+    is recovered as
+    ``j(t) = v(t) / (pi * |r'(t)| * sqrt(1-t**2))``.  That scaling
+    converts Gauss--Chebyshev's ``pi/N`` quadrature weight into the ``1/N``
+    sums used consistently by the differentiated system and by near- and
+    far-field post-processing.
+
+    The implementation follows the derivation notes literally:
 
     - quadrature nodes are the first-kind Chebyshev roots ``t_i``
     - boundary rows use the second-kind zeros ``tau_j = cos(j*pi/n)``
-    - the corrected Kronecker-delta Cauchy term is applied only for ``p = q``
+    - the exact Cauchy coefficient ``-2i/pi`` is applied only for ``p = q``
     - supplementary rows use high-order weighted quadrature for ``M_pq`` and ``c_p``
     """
 
+    cauchy_singularity_coeff = -2j / np.pi
     log_singularity_coeff = 2j / np.pi
 
     def __init__(
@@ -1087,14 +1222,14 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
         return np.cos(j * np.pi / self.n)
 
     def near_field_weight(self) -> float:
-        """Return the paper-normalized near-field quadrature weight."""
+        """Return the ``1/N`` weight for the publication density ``v``."""
 
-        # Near-field postprocessing follows the paper's discrete sum:
-        # U_sc^(n)(r) ~= (1/n) * sum_q sum_i H_0^(1)(k|r-r_q(t_i)|) u_{q,i}.
+        # U_sc=(1/pi) int H_0^(1) v(t)/sqrt(1-t^2) dt, whose
+        # Gauss--Chebyshev discretization is the following 1/n sum.
         return float(1.0 / self.n)
 
     def far_field_prefactor(self) -> complex:
-        """Return the paper-normalized far-field prefactor."""
+        """Return the far-field prefactor for a ``1/N`` density sum."""
 
         # Eq. (13): Phi_sc(phi_0) ~= (1/n) * sqrt(2/pi) * exp(-i*pi/4) * sum(...)
         return complex(np.sqrt(2.0 / (np.pi * 1j)) / self.n)
@@ -1125,7 +1260,7 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
             return derivative_kernel
 
         diff = self.t_nodes[:, None] - self.tau_nodes[None, :]
-        return derivative_kernel - 1.0 / diff
+        return derivative_kernel - self.cauchy_singularity_coeff / diff
 
     def _paper_m_samples(self, target_reflector: int, source_reflector: int) -> np.ndarray:
         """Return the supplementary-kernel samples ``M_pq(t_i)``."""
@@ -1198,9 +1333,11 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
                     )
                     block = k_blocks[(target_reflector, source_reflector)][:, boundary_index].copy()
                     if target_reflector == source_reflector:
-                        # Eq. (11) boundary rows use delta_pq/(t_i-tau_j) + K_pq.
+                        # The exact self split is c/(t_i-tau_j) + K_pp,
+                        # c=-2i/pi.  Adding it back here preserves the raw
+                        # derivative-kernel matrix while K_pp remains smooth.
                         diff = self.t_nodes - boundary_nodes[boundary_index]
-                        block += 1.0 / diff
+                        block += self.cauchy_singularity_coeff / diff
                     a[row, col_slice] = block / self.n
 
             supplementary_row = target_reflector * self.n + (self.n - 1)
@@ -1210,8 +1347,8 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
                     source_reflector * self.n,
                     (source_reflector + 1) * self.n,
                 )
-                # Eq. (11) supplementary row closes the differentiated system
-                # by adding the discrete counterpart of int M_pq(t) v_q(t) omega(t) dt = c_p.
+                # The supplementary row closes the differentiated system with
+                # the 1/pi-normalized integral of M_pq(t) v_q(t) omega(t).
                 a[supplementary_row, col_slice] = (
                     m_samples[(target_reflector, source_reflector)] / self.n
                 )
@@ -1219,7 +1356,7 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
         return a, b
 
     def solve(self) -> MDSSolution:
-        """Solve the paper Eq. (11) system and return the recovered current."""
+        """Solve the differentiated system and return manuscript ``v_nodes``."""
 
         if self.num_reflectors == 0:
             empty = np.empty((0, self.n), dtype=np.complex128)
@@ -1237,7 +1374,9 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
         residual = float(np.max(np.abs(a @ unknowns - b))) if unknowns.size else 0.0
         v_nodes = unknowns.reshape(self.num_reflectors, self.n)
         current = v_nodes / (
-            np.vstack(self.caches.speed_t) * np.sqrt(1.0 - self.t_nodes**2)[None, :]
+            np.pi
+            * np.vstack(self.caches.speed_t)
+            * np.sqrt(1.0 - self.t_nodes**2)[None, :]
         )
         return MDSSolution(
             solver=self,
@@ -1247,3 +1386,8 @@ class MultiReflectorPaperMDS(MultiReflectorMDS):
             physical_current_nodes=current,
             boundary_residual_max=residual,
         )
+
+
+# Backward-compatible exact alias retained for existing scripts and notebooks.
+# New publication code should use ``DifferentiatedNystromSolver``.
+MultiReflectorPaperMDS = DifferentiatedNystromSolver

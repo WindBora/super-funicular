@@ -1,403 +1,1167 @@
-"""Generate publication figures for the Ukrainian Microwave Week paper.
+"""Regenerate the publication figures and numerical revision results.
 
-Problem: E-wave plane-wave scattering by a sinusoidal open PEC strip,
-analysed by the Method of Discrete Singularities (MDS).
+The model is a unit-half-length PEC strip
 
-Figures produced
-----------------
-fig1_flatstrip_near.png      -- flat strip near-field validation
-fig2_flatstrip_far.png       -- flat strip far-field validation
-fig3_sinusoidal_near.png     -- sinusoidal strip near field
-fig4_sinusoidal_far.png      -- sinusoidal strip far field with Floquet markers
-fig5_amplitude_sweep.png     -- reflected-hemisphere evolution with A
-fig6_frequency_sweep.png     -- reflected-hemisphere evolution with nu
+    x(t) = L t,  y(t) = h cos(pi P t),  -1 <= t <= 1,
+
+with ``L=1`` and ``P=5``.  It is represented by :class:`SinusoidalStrip`
+using total length ``2L``, spatial frequency ``P/(2L)``, and phase ``pi/2``.
+All computations use a unit-amplitude plane wave incident along ``+y``.
+
+Running this file writes five vector PDF figures, ``revision_results.csv``,
+and the LaTeX macros in ``revision_results.tex``.  Pass ``--build`` to run
+two ``pdflatex`` passes after the numerical products have been validated.
 """
 
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from __future__ import annotations
 
-import numpy as np
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import argparse
+import csv
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.patches import Arc
+import numpy as np
+from scipy.fft import dct
+
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from src2.geometry import SinusoidalStrip
-from src2.solver import PlaneWave, MultiReflectorPaperMDS
+from src2.solver import (
+    DifferentiatedNystromSolver,
+    MultiReflectorMAR,
+    MultiReflectorMoM,
+    PlaneWave,
+    differential_scattering_cross_section,
+    total_scattering_cross_section,
+)
 
 
-OUT = Path(__file__).parent
-K = 2.0 * np.pi       # wavenumber (lambda = 1)
-# With the suppressed exp(-i*omega*t) factor, beta is the physical direction
-# of exp(+i*k*d.r).  This publication case illuminates the strip from below.
-BETA_INC = np.pi / 2  # normal incidence: wave propagates in +y direction
-L = 10.0              # strip horizontal length (lambda)
-Y_BASE = 0.0          # strip baseline y-coordinate
-N_MDS = 200           # MDS unknowns per reflector
+# Publication configuration.  Lengths are expressed in units of L.
+L = 1.0
+P = 5
+BETA_RAD = np.pi / 2.0
+H_REPRESENTATIVE = 0.10
+KL_REPRESENTATIVE = 20.0
+N_PRODUCTION = 512
+N_REFERENCE = 800
+N_CONVERGENCE = (32, 48, 64, 96, 128, 192, 256, 384, 512)
+N_ANGLES = 4096
+THETA_SAMPLES = 4096
+FLAT_KL = np.linspace(0.25, 20.0, 41)
+POLAR_DB_MIN = -30.0
+POLAR_DB_MAX = 15.0
 
-plt.rcParams.update({
-    'font.family': 'serif',
-    'font.size': 9,
-    'axes.labelsize': 9,
-    'axes.titlesize': 9,
-    'xtick.labelsize': 8,
-    'ytick.labelsize': 8,
-    'legend.fontsize': 8,
-    'lines.linewidth': 1.2,
-})
+FIGURE_PATHS = (
+    HERE / "fig1_geometry.pdf",
+    HERE / "fig2_verification.pdf",
+    HERE / "fig3_field_pattern.pdf",
+    HERE / "fig4_amplitude_polar.pdf",
+    HERE / "fig5_frequency_polar.pdf",
+)
+CSV_PATH = HERE / "revision_results.csv"
+TEX_PATH = HERE / "revision_results.tex"
+
+COLORS = {
+    "blue": "#0072B2",
+    "orange": "#E69F00",
+    "green": "#009E73",
+    "vermillion": "#D55E00",
+    "purple": "#CC79A7",
+    "black": "#222222",
+    "gray": "#777777",
+}
+
+plt.rcParams.update(
+    {
+        "font.family": "serif",
+        # IEEE artwork should use a compact Times-compatible serif face.  STIX
+        # supplies a metrically compatible fallback and matching math glyphs.
+        "font.serif": ["Times New Roman", "STIXGeneral", "Times", "DejaVu Serif"],
+        "mathtext.fontset": "stix",
+        "font.size": 8.0,
+        "axes.labelsize": 8.0,
+        "axes.titlesize": 8.0,
+        "xtick.labelsize": 7.5,
+        "ytick.labelsize": 7.5,
+        "legend.fontsize": 7.2,
+        "lines.linewidth": 1.25,
+        "axes.linewidth": 0.7,
+        "axes.unicode_minus": False,
+        "grid.linewidth": 0.45,
+        "grid.alpha": 0.28,
+        "savefig.bbox": "tight",
+        "savefig.pad_inches": 0.06,
+        "pdf.fonttype": 42,
+    }
+)
+
+POLAR_QUANTITY_LABEL = (
+    r"$10\log_{10}[(\mathrm{d}\sigma/\mathrm{d}\varphi)/L]$ (dB)"
+)
+POLAR_COMMON_SCALE_LABEL = (
+    POLAR_QUANTITY_LABEL + r"; common radial scale: $-30$ to $+15$ dB"
+)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+def log(message: str, started: float) -> None:
+    """Print a timestamped progress message and flush it immediately."""
 
-def make_solver(A: float, nu: float, n: int = N_MDS) -> MultiReflectorPaperMDS:
-    curve = SinusoidalStrip(
-        x_center=0.0, y_base=Y_BASE, length=L,
-        amplitude=A, frequency=nu, phase_rad=0.0,
+    print(f"[{time.perf_counter() - started:7.1f} s] {message}", flush=True)
+
+
+def make_curve(h_over_l: float) -> SinusoidalStrip:
+    """Return ``x=Lt, y=h cos(pi P t)`` using the shared geometry class."""
+
+    return SinusoidalStrip(
+        x_center=0.0,
+        y_base=0.0,
+        length=2.0 * L,
+        amplitude=float(h_over_l) * L,
+        frequency=P / (2.0 * L),
+        phase_rad=np.pi / 2.0,
     )
-    return MultiReflectorPaperMDS(
-        reflectors=[curve],
-        incident=PlaneWave(k=K, beta_rad=BETA_INC),
-        n=n,
-    )
 
 
-def draw_plane_wave_arrow(ax, incident: PlaneWave, *, color: str = 'white') -> None:
-    """Draw ``k`` from the incident side in the physical propagation direction.
+def make_incident(k_l: float) -> PlaneWave:
+    """Return the unit plane wave for a specified dimensionless ``kL``."""
 
-    Arrow geometry is derived from the same direction components used by
-    ``PlaneWave.field``.  This keeps the figure correct if the incidence angle
-    changes and avoids a hard-coded arrow that can disagree with the phasor.
+    return PlaneWave(k=float(k_l) / L, beta_rad=BETA_RAD)
+
+
+def floquet_reference_angles(
+    normalized_spacing: float,
+    max_order: int = 8,
+) -> tuple[list[int], list[float], list[float]]:
+    """Return normal-incidence upper/lower Floquet reference angles in degrees.
+
+    ``normalized_spacing`` is the tangential increment multiplying the order
+    (``pi*P/(kL)`` for the revised profile).  The helper is retained for the
+    repository's time-convention regression tests and uses the strict
+    propagating condition requested in the manuscript.
     """
 
-    x_min, x_max = (float(value) for value in ax.get_xlim())
-    y_min, y_max = (float(value) for value in ax.get_ylim())
-    width = x_max - x_min
-    height = y_max - y_min
-    direction = np.array([incident.direction_x, incident.direction_y], dtype=float)
-    direction /= np.linalg.norm(direction)
+    orders: list[int] = []
+    upper: list[float] = []
+    lower: list[float] = []
+    for order in range(-max_order, max_order + 1):
+        direction_cosine = order * float(normalized_spacing)
+        if abs(direction_cosine) < 1.0:
+            angle = float(
+                np.degrees(np.arccos(np.clip(direction_cosine, -1.0, 1.0)))
+            )
+            orders.append(order)
+            upper.append(angle)
+            lower.append(360.0 - angle)
+    return orders, upper, lower
 
-    margin_x = 0.04 * width
-    margin_y = 0.04 * height
-    length = 0.18 * min(width, height)
-    start_x = (
-        0.5 * (x_min + x_max)
-        if abs(direction[0]) <= 1.0e-12
-        else (x_min + margin_x if direction[0] > 0.0 else x_max - margin_x)
+
+@dataclass
+class SolutionCache:
+    """Cache canonical production solutions reused by several figures."""
+
+    values: dict[tuple[float, float, int], Any]
+
+    def __init__(self) -> None:
+        self.values = {}
+
+    def solve(self, h_over_l: float, k_l: float, n: int) -> Any:
+        key = (float(h_over_l), float(k_l), int(n))
+        if key not in self.values:
+            self.values[key] = DifferentiatedNystromSolver(
+                reflectors=[make_curve(h_over_l)],
+                incident=make_incident(k_l),
+                n=n,
+            ).solve()
+        return self.values[key]
+
+
+def chebyshev_interpolate(values: np.ndarray, t_eval: np.ndarray) -> np.ndarray:
+    """Interpolate samples at first-kind Gauss-Chebyshev nodes."""
+
+    samples = np.asarray(values, dtype=np.complex128)
+    coefficients = dct(samples, type=2) / samples.size
+    coefficients[0] *= 0.5
+    return np.polynomial.chebyshev.chebval(t_eval, coefficients)
+
+
+def weighted_density_error(solution: Any, reference: np.ndarray, theta: np.ndarray) -> float:
+    """Return the relative weighted L2 error of the smooth edge density.
+
+    With ``t=cos(theta)``, the Chebyshev weight ``dt/sqrt(1-t^2)`` is exactly
+    ``dtheta``.  The midpoint theta grid therefore gives an equal-weight norm.
+    ``v_nodes`` carries an implementation pi scale, removed here for clarity;
+    that common factor would cancel in the relative error.
+    """
+
+    density = chebyshev_interpolate(solution.v_nodes[0] / np.pi, np.cos(theta))
+    numerator = np.sum(np.abs(density - reference) ** 2)
+    denominator = np.sum(np.abs(reference) ** 2)
+    return float(np.sqrt(numerator / denominator))
+
+
+def pattern_data(solution: Any, phi: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+    """Return far-field pattern, differential TSCS/L in dB, and total TSCS."""
+
+    pattern = solution.far_field_pattern(phi, total=False)
+    differential_over_l = differential_scattering_cross_section(
+        phi, pattern, solution.solver.k
+    ) / L
+    with np.errstate(divide="ignore"):
+        differential_db = 10.0 * np.log10(np.maximum(differential_over_l, 1.0e-300))
+    total = total_scattering_cross_section(phi, pattern, solution.solver.k)
+    return pattern, differential_db, total
+
+
+def total_field_chunked(solution: Any, x_grid: np.ndarray, y_grid: np.ndarray) -> np.ndarray:
+    """Evaluate a large near-field grid without allocating a huge kernel matrix."""
+
+    x_flat = x_grid.ravel()
+    y_flat = y_grid.ravel()
+    result = np.empty(x_flat.size, dtype=np.complex128)
+    chunk = 2048
+    for start in range(0, x_flat.size, chunk):
+        stop = min(start + chunk, x_flat.size)
+        result[start:stop] = solution.near_field(
+            x_flat[start:stop], y_flat[start:stop], total=True
+        )
+    return result.reshape(x_grid.shape)
+
+
+def panel_label(ax: Any, label: str, *, outside: bool = False) -> None:
+    """Place a consistent panel identifier inside an axes."""
+
+    x_position, y_position = ((0.01, 1.02) if outside else (0.015, 0.975))
+    ax.text(
+        x_position,
+        y_position,
+        label,
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontweight="bold",
+        fontsize=8.0,
+        zorder=20,
     )
-    start_y = (
-        0.5 * (y_min + y_max)
-        if abs(direction[1]) <= 1.0e-12
-        else (y_min + margin_y if direction[1] > 0.0 else y_max - margin_y)
+
+
+def configure_polar(ax: Any) -> None:
+    """Apply the common absolute differential-TSCS polar scale."""
+
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    ax.set_thetagrids(
+        [0, 90, 180, 270],
+        labels=[r"$0^\circ$", r"$90^\circ$", r"$180^\circ$", r"$270^\circ$"],
     )
-    start = np.array([start_x, start_y])
-    end = start + length * direction
+    ax.set_rlim(POLAR_DB_MIN, POLAR_DB_MAX)
+    ax.set_rticks([-30, -15, 0, 15])
+    ax.set_rlabel_position(25)
+    ax.grid(True)
+
+
+def save_figure(fig: Any, path: Path) -> None:
+    """Write a tightly cropped vector PDF and release its memory."""
+
+    fig.savefig(path, format="pdf")
+    plt.close(fig)
+
+
+def figure_geometry() -> None:
+    """Create the geometry and angular-convention schematic."""
+
+    curve = make_curve(H_REPRESENTATIVE)
+    t = np.linspace(-1.0, 1.0, 1601)
+    x, y = curve.coords(t)
+
+    fig, ax = plt.subplots(figsize=(3.45, 2.25), constrained_layout=True)
+    ax.plot(x / L, y / L, color=COLORS["blue"], lw=1.7)
+    ax.axhline(0.0, color=COLORS["gray"], lw=0.65, ls=":")
+    ax.plot([-1.0, 1.0], [0.0, 0.0], "o", ms=2.8, color=COLORS["black"])
+
+    dimension_y = -0.245
+    ax.annotate(
+        "",
+        xy=(-1.0, dimension_y),
+        xytext=(1.0, dimension_y),
+        arrowprops={"arrowstyle": "<->", "lw": 0.8, "color": COLORS["black"]},
+    )
+    ax.vlines([-1.0, 1.0], dimension_y + 0.025, 0.0, colors=COLORS["gray"], lw=0.55)
+    ax.text(0.0, dimension_y - 0.025, r"$2L$", ha="center", va="top")
 
     ax.annotate(
-        '',
-        xy=end,
-        xytext=start,
-        arrowprops=dict(arrowstyle='->', color=color, lw=1.5),
+        "",
+        xy=(0.0, H_REPRESENTATIVE),
+        xytext=(0.0, 0.0),
+        arrowprops={"arrowstyle": "<->", "lw": 0.8, "color": COLORS["vermillion"]},
     )
-    midpoint = 0.5 * (start + end)
-    label_offset = 0.035 * min(width, height) * np.array([-direction[1], direction[0]])
-    ax.text(*(midpoint + label_offset), r'$\mathbf{k}$', color=color, fontsize=9)
+    ax.text(0.045, 0.052, r"$h$", color=COLORS["vermillion"], ha="left", va="center")
+
+    # The schematic shows the general incidence convention beta; the numerical
+    # figures below specialize it to normal incidence, beta=pi/2.
+    incidence_origin = np.array([-0.94, -0.225])
+    incidence_angle = np.deg2rad(48.0)
+    incidence_length = 0.30
+    incidence_end = incidence_origin + incidence_length * np.array(
+        [np.cos(incidence_angle), np.sin(incidence_angle)]
+    )
+    ax.annotate(
+        "",
+        xy=incidence_end,
+        xytext=incidence_origin,
+        arrowprops={"arrowstyle": "->", "lw": 1.0, "color": COLORS["green"]},
+    )
+    ax.plot(
+        [incidence_origin[0], incidence_origin[0] + 0.23],
+        [incidence_origin[1], incidence_origin[1]],
+        color=COLORS["gray"],
+        lw=0.55,
+        ls=":",
+    )
+    ax.add_patch(
+        Arc(
+            incidence_origin,
+            0.22,
+            0.22,
+            theta1=0.0,
+            theta2=np.rad2deg(incidence_angle),
+            color=COLORS["green"],
+            lw=0.75,
+        )
+    )
+    ax.text(-0.78, -0.145, r"$\beta$", color=COLORS["green"], ha="center")
+    ax.text(-0.64, -0.06, r"$\mathbf{k}_{\rm i}$", color=COLORS["green"], va="center")
+
+    ray_angle = np.deg2rad(38.0)
+    ray_length = 0.42
+    ax.annotate(
+        "",
+        xy=(ray_length * np.cos(ray_angle), ray_length * np.sin(ray_angle)),
+        xytext=(0.0, 0.0),
+        arrowprops={"arrowstyle": "->", "lw": 0.9, "color": COLORS["purple"]},
+    )
+    ax.add_patch(
+        Arc(
+            (0.0, 0.0),
+            0.30,
+            0.30,
+            theta1=0.0,
+            theta2=np.rad2deg(ray_angle),
+            color=COLORS["purple"],
+            lw=0.8,
+        )
+    )
+    ax.text(0.17, 0.045, r"$\varphi$", color=COLORS["purple"])
+
+    ax.text(
+        0.98,
+        0.97,
+        r"$x=Lt,\quad y=h\cos(\pi Pt),\quad P=5$",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+    )
+    ax.text(-1.02, 0.03, r"$-L$", ha="center", va="bottom")
+    ax.text(1.02, 0.03, r"$+L$", ha="center", va="bottom")
+    ax.set_xlim(-1.16, 1.16)
+    ax.set_ylim(-0.31, 0.39)
+    ax.set_xlabel(r"$x/L$")
+    ax.set_ylabel(r"$y/L$")
+    ax.set_aspect("equal", adjustable="box")
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.grid(False)
+    save_figure(fig, FIGURE_PATHS[0])
 
 
-def intensity_db(u: np.ndarray, floor: float = -45.0) -> np.ndarray:
-    I = np.abs(u) ** 2
-    Imax = float(np.nanmax(I))
-    if Imax == 0.0:
-        return np.full(I.shape, floor)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        db = 10.0 * np.log10(I / Imax)
-    return np.maximum(db, floor)
+def compute_convergence(cache: SolutionCache, started: float) -> dict[int, float]:
+    """Compute the nine-point density convergence sequence against N=800."""
+
+    theta = (np.arange(THETA_SAMPLES, dtype=float) + 0.5) * np.pi / THETA_SAMPLES
+    log(f"convergence reference N={N_REFERENCE}", started)
+    reference_solution = cache.solve(H_REPRESENTATIVE, KL_REPRESENTATIVE, N_REFERENCE)
+    reference = chebyshev_interpolate(
+        reference_solution.v_nodes[0] / np.pi, np.cos(theta)
+    )
+
+    errors: dict[int, float] = {}
+    for n in N_CONVERGENCE:
+        solution = cache.solve(H_REPRESENTATIVE, KL_REPRESENTATIVE, n)
+        errors[n] = weighted_density_error(solution, reference, theta)
+        log(f"convergence N={n:3d}: relative weighted L2={errors[n]:.6e}", started)
+    return errors
 
 
-def scattering_width(sol, n_phi: int = 4096) -> float:
-    """Compute normalised total 2-D scattering width sigma (in lambda units).
+def compute_flat_sweep(
+    phi: np.ndarray,
+    started: float,
+) -> dict[str, np.ndarray]:
+    """Compute the three-backend flat-strip TSCS verification sweep."""
 
-    sigma = (1/pi) * integral |Phi_sc(phi)|^2 d_phi.
-    This equals the standard 2-D total scattering cross-width per unit amplitude
-    for a unity-amplitude plane wave (|U0|=1).
-    """
-    phi = np.linspace(0.0, 2.0 * np.pi, n_phi, endpoint=False)
-    psc = sol.far_field_pattern(phi, total=False)
-    dphi = 2.0 * np.pi / n_phi
-    return float(np.sum(np.abs(psc) ** 2) * dphi) / np.pi
+    backend_specs: tuple[tuple[str, Callable[..., Any], int], ...] = (
+        ("Differentiated Nystrom", DifferentiatedNystromSolver, 256),
+        ("MAR", MultiReflectorMAR, 256),
+        ("MoM", MultiReflectorMoM, 192),
+    )
+    ratios = {name: np.empty(FLAT_KL.size, dtype=float) for name, _, _ in backend_specs}
+    flat_curve = make_curve(0.0)
 
-
-def floquet_reference_angles(nu: float, max_order: int = 8):
-    """Return propagating forward and backward Floquet-reference angles.
-
-    Angles are measured counter-clockwise from +x.  For incidence along +y,
-    ``acos(m*nu)`` is the forward (+y) branch and ``360-acos(m*nu)`` is
-    the reflected/backward (-y) branch of ``cos(phi_m) = m*nu``.
-    """
-    orders, forward_angles, backward_angles = [], [], []
-    for m in range(-max_order, max_order + 1):
-        if abs(m * nu) < 1.0:
-            phi_forward = float(np.degrees(np.arccos(np.clip(m * nu, -1.0, 1.0))))
-            orders.append(m)
-            forward_angles.append(phi_forward)
-            backward_angles.append(360.0 - phi_forward)
-    return orders, forward_angles, backward_angles
-
-
-# ---------------------------------------------------------------------------
-# Figure 1: flat strip (A = 0) — validation
-# ---------------------------------------------------------------------------
-
-def fig1_flatstrip():
-    print('[fig1] solving flat strip (A=0) ...')
-    sol = make_solver(A=0.0, nu=0.20).solve()          # nu irrelevant for A=0
-    print(f'[fig1] boundary residual = {sol.boundary_residual_max:.2e}')
-    sigma = scattering_width(sol)
-    print(f'[fig1] sigma_total = {sigma:.4f} lambda')
-
-    # near-field grid
-    xs = np.linspace(-6.5, 6.5, 440)
-    ys = np.linspace(-4.2, 5.0, 380)
-    xg, yg = np.meshgrid(xs, ys)
-    u_tot = sol.near_field(xg, yg, total=True)
-
-    # far-field
-    phi = np.linspace(0.0, 2.0 * np.pi, 4096, endpoint=False)
-    psc = sol.far_field_pattern(phi, total=False)
-    pmax = float(np.max(np.abs(psc)))
-    pdb = 20.0 * np.log10(np.maximum(np.abs(psc) / pmax, 1e-7))
-
-    # --- near field ---
-    fig, ax = plt.subplots(1, 1, figsize=(3.45, 2.8), constrained_layout=True)
-    im = ax.imshow(intensity_db(u_tot),
-                   extent=[xs[0], xs[-1], ys[0], ys[-1]],
-                   origin='lower', aspect='equal',
-                   cmap='jet', vmin=-45, vmax=0, interpolation='bilinear')
-    t_plot = np.linspace(-1.0, 1.0, 400)
-    xc, yc = sol.solver.reflectors[0].coords(t_plot)
-    ax.plot(xc, yc, 'w-', linewidth=1.8, zorder=6, label='Strip')
-    draw_plane_wave_arrow(ax, sol.solver.incident)
-    ax.set_xlabel(r'$x/\lambda$')
-    ax.set_ylabel(r'$y/\lambda$')
-    ax.set_title(r'Flat strip: $|U_{\rm tot}|^2$ (dB)')
-    fig.colorbar(im, ax=ax, shrink=0.90, pad=0.01, label='dB')
-    fig.savefig(OUT / 'fig1_flatstrip_near.png', dpi=200, bbox_inches='tight')
-    plt.close(fig)
-
-    # --- far field ---
-    fig, ax = plt.subplots(1, 1, figsize=(3.45, 2.55), constrained_layout=True)
-    ax.plot(np.rad2deg(phi), pdb, 'b-', linewidth=0.9)
-    ax.axvline(90,  color='k', linestyle='--', lw=0.9, alpha=0.7, label=r'Forward ($\varphi=90^\circ$)')
-    ax.axvline(270, color='r', linestyle='--', lw=0.9, alpha=0.7, label=r'Backward ($\varphi=270^\circ$)')
-    ax.set_xlim(0, 360)
-    ax.set_ylim(-50, 1)
-    ax.set_xlabel(r'$\varphi$ (deg)')
-    ax.set_ylabel(r'Norm. $|\Phi_{\rm sc}|$ (dB)')
-    ax.set_title('Flat strip: far-field pattern')
-    ax.legend(fontsize=6.5, loc='lower left')
-    ax.grid(True, alpha=0.3)
-    ax.set_xticks([0, 90, 180, 270, 360])
-
-    fig.savefig(OUT / 'fig2_flatstrip_far.png', dpi=200, bbox_inches='tight')
-    plt.close(fig)
-    print('[fig1] saved  fig1_flatstrip_near.png, fig2_flatstrip_far.png')
-    return sigma
-
-
-# ---------------------------------------------------------------------------
-# Figure 2: sinusoidal strip best case — near field + far field
-# ---------------------------------------------------------------------------
-
-def fig2_sinusoidal(A: float = 1.5, nu: float = 0.20):
-    print(f'[fig2] solving sinusoidal strip A={A}, nu={nu} ...')
-    sol = make_solver(A, nu).solve()
-    print(f'[fig2] boundary residual = {sol.boundary_residual_max:.2e}')
-
-    xs = np.linspace(-6.5, 6.5, 440)
-    ys = np.linspace(-A - 2.0, A + 4.5, 380)
-    xg, yg = np.meshgrid(xs, ys)
-    u_tot = sol.near_field(xg, yg, total=True)
-
-    phi = np.linspace(0.0, 2.0 * np.pi, 4096, endpoint=False)
-    psc = sol.far_field_pattern(phi, total=False)
-    pmax = float(np.max(np.abs(psc)))
-    pdb = 20.0 * np.log10(np.maximum(np.abs(psc) / pmax, 1e-7))
-
-    # --- near field ---
-    fig, ax = plt.subplots(1, 1, figsize=(3.45, 2.8), constrained_layout=True)
-    im = ax.imshow(intensity_db(u_tot),
-                   extent=[xs[0], xs[-1], ys[0], ys[-1]],
-                   origin='lower', aspect='equal',
-                   cmap='jet', vmin=-45, vmax=0, interpolation='bilinear')
-    t_plot = np.linspace(-1.0, 1.0, 600)
-    xc, yc = sol.solver.reflectors[0].coords(t_plot)
-    ax.plot(xc, yc, 'w-', linewidth=2.0, zorder=6)
-    ax.plot(xc, yc, color='#ff55ff', linewidth=1.3, zorder=7)
-    draw_plane_wave_arrow(ax, sol.solver.incident)
-    ax.set_xlabel(r'$x/\lambda$')
-    ax.set_ylabel(r'$y/\lambda$')
-    ax.set_title(fr'Sinusoidal: $A={A}\lambda$, $\nu={nu}\,\lambda^{{-1}}$')
-    fig.colorbar(im, ax=ax, shrink=0.90, pad=0.01, label='dB')
-    fig.savefig(OUT / 'fig3_sinusoidal_near.png', dpi=200, bbox_inches='tight')
-    plt.close(fig)
-
-    # --- far field with Floquet-order markers ---
-    fig, ax2 = plt.subplots(1, 1, figsize=(3.45, 2.55), constrained_layout=True)
-    phi_deg = np.rad2deg(phi)
-    ax2.plot(phi_deg, pdb, 'b-', linewidth=0.9, label='Scattered field', zorder=3)
-
-    marker_colors = ['#d62728', '#2ca02c', '#ff7f0e', '#9467bd']
-    orders, _, backward_angles = floquet_reference_angles(nu, max_order=3)
-    label_set = set()
-    for m, phi_m in zip(orders, backward_angles):
-        if m == 0:
-            continue
-        col = marker_colors[abs(m) - 1] if abs(m) <= len(marker_colors) else 'gray'
-        sign = '+' if m > 0 else ''
-        lbl = fr'$m={sign}{m}$ refl. ({phi_m:.0f}$^\circ$)'
-        if lbl not in label_set:
-            ax2.axvline(phi_m, color=col, linestyle=':', lw=1.1, alpha=0.85, label=lbl)
-            label_set.add(lbl)
-
-    ax2.axvline(90,  color='k', linestyle='--', lw=0.9, alpha=0.6, label=r'$m=0$ fwd (90$^\circ$)')
-    ax2.axvline(270, color='gray', linestyle='--', lw=0.9, alpha=0.6, label=r'$m=0$ bwd (270$^\circ$)')
-    ax2.set_xlim(0, 360)
-    ax2.set_ylim(-50, 1)
-    ax2.set_xlabel(r'$\varphi$ (deg)')
-    ax2.set_ylabel(r'Norm. $|\Phi_{\rm sc}|$ (dB)')
-    ax2.set_title('Far-field pattern with Floquet markers')
-    ax2.legend(fontsize=6.5, loc='lower left', ncol=1)
-    ax2.grid(True, alpha=0.3)
-    ax2.set_xticks([0, 90, 180, 270, 360])
-
-    fig.savefig(OUT / 'fig4_sinusoidal_far.png', dpi=200, bbox_inches='tight')
-    plt.close(fig)
-    print('[fig2] saved  fig3_sinusoidal_near.png, fig4_sinusoidal_far.png')
-
-
-# ---------------------------------------------------------------------------
-# Figures 5 and 6: reflected-pattern evolution with A and nu
-# ---------------------------------------------------------------------------
-
-def fig3_pattern_evolution():
-    """Reflected-hemisphere patterns showing finite-strip Floquet lobes.
-
-    Figure 5 varies A at fixed nu=0.20; Figure 6 varies nu at fixed A=1.5.
-    """
-    print('[fig3] pattern-evolution sweep ...')
-    # For +y incidence, pi <= phi <= 2*pi is the reflected/backward side.
-    phi = np.linspace(np.pi, 2.0 * np.pi, 2048)
-    phi_deg = np.rad2deg(phi)
-
-    palette_A  = ['#444444', '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
-    palette_nu = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
-
-    # ---- Left: vary A, nu fixed ----
-    nu_fixed = 0.20
-    amplitudes_plot = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
-    fig, ax1 = plt.subplots(1, 1, figsize=(3.45, 2.55), constrained_layout=True)
-    for A, col in zip(amplitudes_plot, palette_A):
-        sol = make_solver(A, nu_fixed).solve()
-        psc = sol.far_field_pattern(phi, total=False)
-        pmax = float(np.max(np.abs(psc)))
-        pdb = 20.0 * np.log10(np.maximum(np.abs(psc) / pmax, 1e-7))
-        lbl = fr'$A={A}\lambda$' if A > 0 else r'$A=0$ (flat)'
-        print(f'  [fig3-left]  A={A:.1f}, nu={nu_fixed:.2f}:  res={sol.boundary_residual_max:.1e}')
-        ax1.plot(phi_deg, pdb, color=col, lw=0.95, label=lbl)
-
-    orders, _, backward_angles = floquet_reference_angles(nu_fixed, max_order=3)
-    for m, phi_m in zip(orders, backward_angles):
-        if abs(m) == 1:
-            ax1.axvline(phi_m, color='gray', linestyle=':', lw=0.85, alpha=0.8)
-            ax1.text(
-                phi_m,
-                -48,
-                fr'$m={m:+d}$',
-                fontsize=6,
-                color='gray',
-                rotation=90,
-                ha='center',
-                va='bottom',
+    log("flat-strip TSCS sweep: 41 frequencies x 3 backends", started)
+    for index, k_l in enumerate(FLAT_KL):
+        for name, solver_type, n in backend_specs:
+            solution = solver_type(
+                reflectors=[flat_curve], incident=make_incident(k_l), n=n
+            ).solve()
+            pattern = solution.far_field_pattern(phi, total=False)
+            sigma = total_scattering_cross_section(phi, pattern, solution.solver.k)
+            ratios[name][index] = sigma / (4.0 * L)
+        if index == 0 or (index + 1) % 5 == 0 or index + 1 == FLAT_KL.size:
+            log(
+                f"flat sweep {index + 1:2d}/{FLAT_KL.size}: kL={k_l:5.2f}",
+                started,
             )
-    ax1.axvline(270.0, color='k', linestyle='--', lw=0.85, alpha=0.7)
-    ax1.text(270, -48, r'$m=0$', fontsize=6, color='k', rotation=90, ha='center', va='bottom')
-    ax1.set_xlim(180, 360)
-    ax1.set_ylim(-50, 1)
-    ax1.set_xlabel(r'$\varphi$ (deg)')
-    ax1.set_ylabel(r'Norm. $|\Phi_{\rm sc}|$ (dB)')
-    ax1.set_title(fr'Fixed $\nu={nu_fixed}\,\lambda^{{-1}}$, vary $A$')
-    ax1.legend(fontsize=6.5, loc='upper left', ncol=2)
-    ax1.grid(True, alpha=0.3)
-    ax1.set_xticks([180, 225, 270, 315, 360])
-    fig.savefig(OUT / 'fig5_amplitude_sweep.png', dpi=200, bbox_inches='tight')
-    plt.close(fig)
-
-    # ---- Right: vary nu, A fixed ----
-    A_fixed = 1.5
-    freqs_plot = [0.10, 0.15, 0.20, 0.25, 0.30]
-    fig, ax2 = plt.subplots(1, 1, figsize=(3.45, 2.55), constrained_layout=True)
-    for nu, col in zip(freqs_plot, palette_nu):
-        sol = make_solver(A_fixed, nu).solve()
-        psc = sol.far_field_pattern(phi, total=False)
-        pmax = float(np.max(np.abs(psc)))
-        pdb = 20.0 * np.log10(np.maximum(np.abs(psc) / pmax, 1e-7))
-        lbl = fr'$\nu={nu}\,\lambda^{{-1}}$'
-        print(f'  [fig3-right] A={A_fixed:.1f}, nu={nu:.2f}:  res={sol.boundary_residual_max:.1e}')
-        ax2.plot(phi_deg, pdb, color=col, lw=0.95, label=lbl)
-        # Mark both reflected first-order references for this frequency.
-        if abs(nu) < 1.0:
-            phi_plus_1 = 360.0 - float(np.degrees(np.arccos(min(nu, 0.9999))))
-            phi_minus_1 = 360.0 - float(np.degrees(np.arccos(max(-nu, -0.9999))))
-            ax2.axvline(phi_plus_1, color=col, linestyle=':', lw=0.7, alpha=0.6)
-            ax2.axvline(phi_minus_1, color=col, linestyle=':', lw=0.7, alpha=0.6)
-
-    ax2.axvline(270.0, color='k', linestyle='--', lw=0.85, alpha=0.7, label=r'$m=0$ (270$^\circ$)')
-    ax2.set_xlim(180, 360)
-    ax2.set_ylim(-50, 1)
-    ax2.set_xlabel(r'$\varphi$ (deg)')
-    ax2.set_title(fr'Fixed $A={A_fixed}\,\lambda$, vary $\nu$')
-    ax2.legend(fontsize=6.5, loc='upper left')
-    ax2.grid(True, alpha=0.3)
-    ax2.set_xticks([180, 225, 270, 315, 360])
-
-    fig.savefig(OUT / 'fig6_frequency_sweep.png', dpi=200, bbox_inches='tight')
-    plt.close(fig)
-    print('[fig3] saved  fig5_amplitude_sweep.png, fig6_frequency_sweep.png')
+    return ratios
 
 
-# ---------------------------------------------------------------------------
-# N-convergence of sigma for the flat strip (for paper Table I)
-# ---------------------------------------------------------------------------
+def compute_backend_order_checks(
+    phi: np.ndarray,
+    flat_ratios: dict[str, np.ndarray],
+    started: float,
+) -> dict[str, dict[str, float | int]]:
+    """Order-double every flat-strip backend at the most demanding kL=20 point."""
 
-def print_convergence_table():
-    print('\n=== N-convergence: flat strip, A=0, L=10 lambda ===')
-    print(f'{"N":>6}  {"sigma (lambda)":>16}  {"rel. change":>12}  {"residual":>12}')
-    prev = None
-    for n in [32, 64, 100, 150, 200]:
-        sol = make_solver(A=0.0, nu=0.20, n=n).solve()
-        sig = scattering_width(sol)
-        rel = abs(sig - prev) / abs(prev) if prev is not None else float('nan')
-        print(f'{n:>6}  {sig:>16.6f}  {rel:>12.2e}  {sol.boundary_residual_max:>12.2e}')
-        prev = sig
+    backend_specs: tuple[tuple[str, Callable[..., Any], int, int], ...] = (
+        ("Differentiated Nystrom", DifferentiatedNystromSolver, 256, 512),
+        ("MAR", MultiReflectorMAR, 256, 512),
+        ("MoM", MultiReflectorMoM, 192, 384),
+    )
+    checks: dict[str, dict[str, float | int]] = {}
+    flat_curve = make_curve(0.0)
+    for name, solver_type, base_n, doubled_n in backend_specs:
+        solution = solver_type(
+            reflectors=[flat_curve],
+            incident=make_incident(KL_REPRESENTATIVE),
+            n=doubled_n,
+        ).solve()
+        pattern = solution.far_field_pattern(phi, total=False)
+        doubled_ratio = total_scattering_cross_section(
+            phi, pattern, solution.solver.k
+        ) / (4.0 * L)
+        base_ratio = float(flat_ratios[name][-1])
+        relative_change = abs(doubled_ratio - base_ratio) / abs(doubled_ratio)
+        checks[name] = {
+            "base_n": base_n,
+            "doubled_n": doubled_n,
+            "base_ratio": base_ratio,
+            "doubled_ratio": doubled_ratio,
+            "relative_change": relative_change,
+        }
+        log(
+            f"order doubling {name}: N={base_n}->{doubled_n}, "
+            f"relative TSCS change={relative_change:.6e}",
+            started,
+        )
+    return checks
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+def figure_verification(errors: dict[int, float], ratios: dict[str, np.ndarray]) -> None:
+    """Create the convergence and independent-backend verification panels."""
 
-if __name__ == '__main__':
-    print('=== Ukrainian Microwave Week — plane-wave figures ===\n')
+    fig, axes = plt.subplots(1, 2, figsize=(7.10, 2.65), constrained_layout=True)
 
-    print('--- Figure 1: flat strip (validation) ---')
-    sigma_flat = fig1_flatstrip()
+    ax = axes[0]
+    n_values = np.asarray(N_CONVERGENCE)
+    error_values = np.asarray([errors[n] for n in N_CONVERGENCE])
+    ax.loglog(
+        n_values,
+        error_values,
+        "o-",
+        color=COLORS["blue"],
+        ms=3.4,
+        mfc="white",
+        mew=0.8,
+    )
+    ax.set_xlabel("Nystr\N{LATIN SMALL LETTER O WITH DIAERESIS}m order $N$")
+    ax.set_ylabel(r"Relative weighted $L^2$ error")
+    ax.set_xticks([32, 64, 128, 256, 512], labels=["32", "64", "128", "256", "512"])
+    ax.set_ylim(1.0e-5, 1.0)
+    ax.grid(True, which="both")
+    exponent = int(np.floor(np.log10(abs(errors[512]))))
+    mantissa = errors[512] / (10.0**exponent)
+    ax.text(
+        0.06,
+        0.08,
+        rf"$N=512:\;{mantissa:.2f}\times 10^{{{exponent}}}$",
+        transform=ax.transAxes,
+        ha="left",
+        va="bottom",
+        bbox={"boxstyle": "round,pad=0.18", "fc": "white", "ec": "0.75", "lw": 0.5},
+    )
+    panel_label(ax, "(a)", outside=True)
 
-    print('\n--- Figure 2: sinusoidal strip best case ---')
-    fig2_sinusoidal(A=1.5, nu=0.20)
+    ax = axes[1]
+    styles = {
+        "Differentiated Nystrom": (COLORS["blue"], "-"),
+        "MAR": (COLORS["vermillion"], "--"),
+        "MoM": (COLORS["green"], ":"),
+    }
+    labels = {
+        "Differentiated Nystrom": "Nystr\N{LATIN SMALL LETTER O WITH DIAERESIS}m ($N=256$)",
+        "MAR": "Analytical regularization (MAR, $N=256$)",
+        "MoM": "Pulse-basis method of moments (MoM, $N=192$)",
+    }
+    for name in ("Differentiated Nystrom", "MAR", "MoM"):
+        color, linestyle = styles[name]
+        ax.plot(FLAT_KL, ratios[name], color=color, ls=linestyle, label=labels[name])
+    ax.axhline(
+        1.0,
+        color=COLORS["black"],
+        lw=0.9,
+        ls="-.",
+        label="Geometrical optics (GO)",
+    )
+    ax.set_xlabel(r"$kL$")
+    ax.set_ylabel(r"$\sigma/(4L)$")
+    ax.set_xlim(0.25, 20.0)
+    combined = np.concatenate(tuple(ratios.values()))
+    lower = min(0.94, float(np.min(combined)) - 0.02)
+    upper = max(1.05, float(np.max(combined)) + 0.02)
+    ax.set_ylim(lower, upper)
+    ax.grid(True)
+    ax.legend(loc="upper right", ncol=1, handlelength=2.3, borderaxespad=0.5)
+    panel_label(ax, "(b)", outside=True)
 
-    print('\n--- Figure 3: pattern evolution ---')
-    fig3_pattern_evolution()
+    save_figure(fig, FIGURE_PATHS[1])
 
-    print_convergence_table()
 
-    print('\n=== Done. Figures saved to', OUT, '===')
+def compute_publication_cases(
+    cache: SolutionCache,
+    phi: np.ndarray,
+    started: float,
+) -> tuple[dict[float, dict[str, Any]], dict[float, dict[str, Any]]]:
+    """Solve the amplitude and frequency cases at production order N=512."""
+
+    amplitudes: dict[float, dict[str, Any]] = {}
+    for h_over_l in (0.0, 0.05, 0.10):
+        solution = cache.solve(h_over_l, KL_REPRESENTATIVE, N_PRODUCTION)
+        pattern, differential_db, total = pattern_data(solution, phi)
+        amplitudes[h_over_l] = {
+            "solution": solution,
+            "pattern": pattern,
+            "differential_db": differential_db,
+            "sigma": total,
+        }
+        log(
+            f"production h/L={h_over_l:.2f}, kL=20: sigma/(4L)={total / (4.0 * L):.8f}",
+            started,
+        )
+
+    frequencies: dict[float, dict[str, Any]] = {}
+    for k_l in (12.0, 16.0, 20.0):
+        solution = cache.solve(H_REPRESENTATIVE, k_l, N_PRODUCTION)
+        pattern, differential_db, total = pattern_data(solution, phi)
+        frequencies[k_l] = {
+            "solution": solution,
+            "pattern": pattern,
+            "differential_db": differential_db,
+            "sigma": total,
+        }
+        log(
+            f"production h/L=0.10, kL={k_l:g}: sigma/(4L)={total / (4.0 * L):.8f}",
+            started,
+        )
+    return amplitudes, frequencies
+
+
+def compute_publication_reference_checks(
+    cache: SolutionCache,
+    phi: np.ndarray,
+    amplitudes: dict[float, dict[str, Any]],
+    frequencies: dict[float, dict[str, Any]],
+    started: float,
+) -> list[dict[str, float | str]]:
+    """Compare every unique N=512 publication case with an N=800 solution."""
+
+    production: dict[tuple[float, float], tuple[str, dict[str, Any]]] = {}
+    for h_over_l, case in amplitudes.items():
+        production[(h_over_l, KL_REPRESENTATIVE)] = (
+            f"h/L={h_over_l:.2f}, kL=20",
+            case,
+        )
+    for k_l, case in frequencies.items():
+        production.setdefault(
+            (H_REPRESENTATIVE, k_l),
+            (f"h/L=0.10, kL={k_l:g}", case),
+        )
+
+    checks: list[dict[str, float | str]] = []
+    for (h_over_l, k_l), (label, case) in production.items():
+        reference_solution = cache.solve(h_over_l, k_l, N_REFERENCE)
+        reference_pattern = reference_solution.far_field_pattern(phi, total=False)
+        reference_sigma = total_scattering_cross_section(
+            phi, reference_pattern, reference_solution.solver.k
+        )
+        production_pattern = np.asarray(case["pattern"])
+        pattern_change = float(
+            np.sqrt(
+                np.sum(np.abs(production_pattern - reference_pattern) ** 2)
+                / np.sum(np.abs(reference_pattern) ** 2)
+            )
+        )
+        tscs_change = float(abs(case["sigma"] - reference_sigma) / abs(reference_sigma))
+        checks.append(
+            {
+                "label": label,
+                "h_over_l": h_over_l,
+                "k_l": k_l,
+                "tscs_change": tscs_change,
+                "pattern_change": pattern_change,
+            }
+        )
+        log(
+            f"N=512 vs 800 {label}: TSCS={tscs_change:.3e}, "
+            f"full-pattern L2={pattern_change:.3e}",
+            started,
+        )
+    return checks
+
+
+def figure_field_pattern(phi: np.ndarray, representative: dict[str, Any]) -> None:
+    """Create the absolute total near-field and differential-TSCS polar panels."""
+
+    solution = representative["solution"]
+    xs = np.linspace(-1.30 * L, 1.30 * L, 321)
+    ys = np.linspace(-0.62 * L, 0.82 * L, 241)
+    x_grid, y_grid = np.meshgrid(xs, ys)
+    total_field = total_field_chunked(solution, x_grid, y_grid)
+    # Unit incidence makes this exactly |U_tot|^2/|U_inc|^2.
+    relative_intensity = np.abs(total_field) ** 2
+
+    curve = make_curve(H_REPRESENTATIVE)
+    inside = np.abs(x_grid) <= L
+    curve_y = curve.y(np.clip(x_grid / L, -1.0, 1.0))
+    strip_mask = inside & (np.abs(y_grid - curve_y) < 0.008 * L)
+    relative_intensity[strip_mask | ~np.isfinite(relative_intensity)] = np.nan
+    color_max = max(1.0, float(np.nanpercentile(relative_intensity, 99.7)))
+
+    fig = plt.figure(figsize=(7.10, 3.05), constrained_layout=True)
+    grid = fig.add_gridspec(1, 2, width_ratios=[1.25, 1.0])
+    ax_field = fig.add_subplot(grid[0, 0])
+    ax_polar = fig.add_subplot(grid[0, 1], projection="polar")
+
+    image = ax_field.pcolormesh(
+        x_grid / L,
+        y_grid / L,
+        relative_intensity,
+        shading="auto",
+        cmap="viridis",
+        vmin=0.0,
+        vmax=color_max,
+        rasterized=True,
+    )
+    t_plot = np.linspace(-1.0, 1.0, 1601)
+    x_curve, y_curve = curve.coords(t_plot)
+    ax_field.plot(x_curve / L, y_curve / L, color="white", lw=2.2, zorder=5)
+    ax_field.plot(x_curve / L, y_curve / L, color=COLORS["black"], lw=0.8, zorder=6)
+    ax_field.annotate(
+        "",
+        xy=(-1.12, -0.32),
+        xytext=(-1.12, -0.52),
+        arrowprops={"arrowstyle": "->", "lw": 1.0, "color": "white"},
+    )
+    ax_field.text(-1.06, -0.43, r"$\mathbf{k}_{\rm i}$", color="white", va="center")
+    ax_field.set_xlabel(r"$x/L$")
+    ax_field.set_ylabel(r"$y/L$")
+    ax_field.set_aspect("equal", adjustable="box")
+    ax_field.set_xlim(xs[0] / L, xs[-1] / L)
+    ax_field.set_ylim(ys[0] / L, ys[-1] / L)
+    colorbar = fig.colorbar(image, ax=ax_field, pad=0.02, shrink=0.91)
+    colorbar.set_label(r"$|U_{\rm tot}|^2/|U_{\rm inc}|^2$")
+    panel_label(ax_field, "(a)")
+
+    configure_polar(ax_polar)
+    ax_polar.plot(phi, representative["differential_db"], color=COLORS["blue"])
+    ax_polar.set_title(POLAR_QUANTITY_LABEL, pad=10)
+    panel_label(ax_polar, "(b)")
+
+    save_figure(fig, FIGURE_PATHS[2])
+
+
+def figure_amplitude(phi: np.ndarray, cases: dict[float, dict[str, Any]]) -> None:
+    """Create three single-curve differential-TSCS amplitude polar panels."""
+
+    fig, axes = plt.subplots(
+        1,
+        3,
+        figsize=(7.10, 2.72),
+        subplot_kw={"projection": "polar"},
+        constrained_layout=True,
+    )
+    fig.suptitle(POLAR_COMMON_SCALE_LABEL, fontsize=8.0)
+    styles = (
+        (0.0, COLORS["black"], "-"),
+        (0.05, COLORS["orange"], "--"),
+        (0.10, COLORS["blue"], "-"),
+    )
+    for panel_index, (ax, (h_over_l, color, linestyle)) in enumerate(
+        zip(axes, styles, strict=True)
+    ):
+        configure_polar(ax)
+        ax.plot(
+            phi,
+            cases[h_over_l]["differential_db"],
+            color=color,
+            ls=linestyle,
+        )
+        ax.set_title(rf"$h/L={h_over_l:.2f}$", pad=7)
+        panel_label(ax, f"({chr(ord('a') + panel_index)})")
+    save_figure(fig, FIGURE_PATHS[3])
+
+
+def figure_frequency(phi: np.ndarray, cases: dict[float, dict[str, Any]]) -> None:
+    """Create three single-curve differential-TSCS frequency polar panels."""
+
+    fig, axes = plt.subplots(
+        1,
+        3,
+        figsize=(7.10, 2.72),
+        subplot_kw={"projection": "polar"},
+        constrained_layout=True,
+    )
+    fig.suptitle(POLAR_COMMON_SCALE_LABEL, fontsize=8.0)
+    styles = (
+        (12.0, COLORS["green"], ":"),
+        (16.0, COLORS["orange"], "--"),
+        (20.0, COLORS["blue"], "-"),
+    )
+    for panel_index, (ax, (k_l, color, linestyle)) in enumerate(
+        zip(axes, styles, strict=True)
+    ):
+        configure_polar(ax)
+        ax.plot(
+            phi,
+            cases[k_l]["differential_db"],
+            color=color,
+            ls=linestyle,
+        )
+        ax.set_title(rf"$kL={k_l:g}$", pad=7)
+        panel_label(ax, f"({chr(ord('a') + panel_index)})")
+    save_figure(fig, FIGURE_PATHS[4])
+
+
+CSV_FIELDS = (
+    "dataset",
+    "series",
+    "x_name",
+    "x_value",
+    "y_name",
+    "y_value",
+    "units",
+    "n",
+    "h_over_L",
+    "kL",
+    "P",
+    "beta_deg",
+    "notes",
+)
+
+
+def base_row(**updates: Any) -> dict[str, Any]:
+    """Return one consistently shaped result row."""
+
+    row = {field: "" for field in CSV_FIELDS}
+    row.update({"P": P, "beta_deg": 90.0})
+    row.update(updates)
+    return row
+
+
+def write_csv(
+    errors: dict[int, float],
+    flat_ratios: dict[str, np.ndarray],
+    order_checks: dict[str, dict[str, float | int]],
+    amplitudes: dict[float, dict[str, Any]],
+    frequencies: dict[float, dict[str, Any]],
+    reference_checks: list[dict[str, float | str]],
+    phi: np.ndarray,
+    metrics: dict[str, float],
+) -> None:
+    """Persist scalar results and the one-dimensional data behind every plot."""
+
+    rows: list[dict[str, Any]] = []
+    for macro_name, value in metrics.items():
+        units = "dimensionless"
+        notes = ""
+        if macro_name == "BackendMaxDiff":
+            notes = "maximum absolute inter-backend spread in sigma/(4L) over 41 kL values"
+        elif macro_name == "ConvErrorNFiveTwelve":
+            notes = "relative L2_{1/sqrt(1-t^2)} density error against N=800"
+        elif macro_name == "FirstOrderCutoff":
+            units = "kL"
+            notes = "normal-incidence first grating-order threshold pi*P"
+        elif macro_name == "FlatOrderDoublingMaxChange":
+            notes = "worst relative TSCS change in the three kL=20 backend order-doubling checks"
+        elif macro_name == "ProductionMaxTSCSChange":
+            notes = "worst relative TSCS change for N=512 versus N=800 over all publication cases"
+        elif macro_name == "ProductionMaxPatternChange":
+            notes = "worst full-complex-pattern relative L2 change for N=512 versus N=800"
+        elif "TSCS" in macro_name:
+            notes = "sigma/(4L)"
+        rows.append(
+            base_row(
+                dataset="metric",
+                series=macro_name,
+                y_name="value",
+                y_value=f"{value:.16g}",
+                units=units,
+                notes=notes,
+            )
+        )
+
+    for n, error in errors.items():
+        rows.append(
+            base_row(
+                dataset="density_convergence",
+                series="Differentiated Nystrom",
+                x_name="N",
+                x_value=n,
+                y_name="relative_weighted_L2_error",
+                y_value=f"{error:.16g}",
+                units="dimensionless",
+                n=n,
+                h_over_L=H_REPRESENTATIVE,
+                kL=KL_REPRESENTATIVE,
+                notes=f"N_ref={N_REFERENCE}; {THETA_SAMPLES} midpoint theta samples",
+            )
+        )
+
+    backend_n = {"Differentiated Nystrom": 256, "MAR": 256, "MoM": 192}
+    for name, values in flat_ratios.items():
+        for k_l, value in zip(FLAT_KL, values, strict=True):
+            rows.append(
+                base_row(
+                    dataset="flat_tscs_sweep",
+                    series=name,
+                    x_name="kL",
+                    x_value=f"{k_l:.16g}",
+                    y_name="sigma_over_4L",
+                    y_value=f"{value:.16g}",
+                    units="dimensionless",
+                    n=backend_n[name],
+                    h_over_L=0.0,
+                    kL=f"{k_l:.16g}",
+                    notes=f"{N_ANGLES} endpoint-excluded azimuth samples",
+                )
+            )
+    for k_l in FLAT_KL:
+        rows.append(
+            base_row(
+                dataset="flat_tscs_sweep",
+                series="GO",
+                x_name="kL",
+                x_value=f"{k_l:.16g}",
+                y_name="sigma_over_4L",
+                y_value="1",
+                units="dimensionless",
+                h_over_L=0.0,
+                kL=f"{k_l:.16g}",
+                notes="geometrical-optics limit sigma=4L",
+            )
+        )
+
+    for name, check in order_checks.items():
+        for order_key, ratio_key in (
+            ("base_n", "base_ratio"),
+            ("doubled_n", "doubled_ratio"),
+        ):
+            rows.append(
+                base_row(
+                    dataset="flat_order_doubling",
+                    series=name,
+                    x_name="N",
+                    x_value=check[order_key],
+                    y_name="sigma_over_4L",
+                    y_value=f"{float(check[ratio_key]):.16g}",
+                    units="dimensionless",
+                    n=check[order_key],
+                    h_over_L=0.0,
+                    kL=KL_REPRESENTATIVE,
+                    notes="flat strip at kL=20",
+                )
+            )
+        rows.append(
+            base_row(
+                dataset="flat_order_doubling",
+                series=name,
+                x_name="N_pair",
+                x_value=f"{check['base_n']}->{check['doubled_n']}",
+                y_name="relative_tscs_change",
+                y_value=f"{float(check['relative_change']):.16g}",
+                units="dimensionless",
+                h_over_L=0.0,
+                kL=KL_REPRESENTATIVE,
+                notes="abs(sigma_N-sigma_2N)/abs(sigma_2N)",
+            )
+        )
+
+    for check in reference_checks:
+        for y_name in ("tscs_change", "pattern_change"):
+            rows.append(
+                base_row(
+                    dataset="production_reference_check",
+                    series=check["label"],
+                    x_name="N_pair",
+                    x_value=f"{N_PRODUCTION}->{N_REFERENCE}",
+                    y_name=(
+                        "relative_tscs_change"
+                        if y_name == "tscs_change"
+                        else "relative_full_pattern_L2_change"
+                    ),
+                    y_value=f"{float(check[y_name]):.16g}",
+                    units="dimensionless",
+                    n=N_PRODUCTION,
+                    h_over_L=check["h_over_l"],
+                    kL=check["k_l"],
+                    notes="N=800 reference; 4096 endpoint-excluded azimuth samples",
+                )
+            )
+
+    phi_deg = np.rad2deg(phi)
+    for h_over_l, case in amplitudes.items():
+        for angle, value in zip(phi_deg, case["differential_db"], strict=True):
+            rows.append(
+                base_row(
+                    dataset="amplitude_polar",
+                    series=f"h/L={h_over_l:.2f}",
+                    x_name="phi_deg",
+                    x_value=f"{angle:.16g}",
+                    y_name="differential_tscs_over_L_db",
+                    y_value=f"{value:.16g}",
+                    units="dB",
+                    n=N_PRODUCTION,
+                    h_over_L=f"{h_over_l:.2f}",
+                    kL=KL_REPRESENTATIVE,
+                    notes="absolute; not peak-normalized",
+                )
+            )
+    for k_l, case in frequencies.items():
+        for angle, value in zip(phi_deg, case["differential_db"], strict=True):
+            rows.append(
+                base_row(
+                    dataset="frequency_polar",
+                    series=f"kL={k_l:g}",
+                    x_name="phi_deg",
+                    x_value=f"{angle:.16g}",
+                    y_name="differential_tscs_over_L_db",
+                    y_value=f"{value:.16g}",
+                    units="dB",
+                    n=N_PRODUCTION,
+                    h_over_L=H_REPRESENTATIVE,
+                    kL=f"{k_l:g}",
+                    notes="absolute; not peak-normalized",
+                )
+            )
+
+    with CSV_PATH.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=CSV_FIELDS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def latex_number(value: float) -> str:
+    """Format a finite scalar for robust use in text or math mode."""
+
+    if value == 0.0:
+        return r"\ensuremath{0}"
+    magnitude = abs(value)
+    if 1.0e-3 <= magnitude < 1.0e4:
+        return rf"\ensuremath{{{value:.7g}}}"
+    exponent = int(np.floor(np.log10(magnitude)))
+    mantissa = value / (10.0**exponent)
+    return rf"\ensuremath{{{mantissa:.6g}\times 10^{{{exponent}}}}}"
+
+
+def write_tex(metrics: dict[str, float]) -> None:
+    """Write publication macros with deterministic names and precision."""
+
+    comments = (
+        "% Generated by generate_figures.py; do not edit by hand.",
+        "% TSCS result macros are dimensionless sigma/(4L) ratios.",
+        "% BackendMaxDiff is an absolute difference in sigma/(4L).",
+        "% FirstOrderCutoff is the dimensionless kL threshold pi*P.",
+    )
+    lines = [*comments]
+    for name, value in metrics.items():
+        lines.append(rf"\newcommand{{\{name}}}{{{latex_number(value)}}}")
+    TEX_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def validate(
+    errors: dict[int, float],
+    flat_ratios: dict[str, np.ndarray],
+    order_checks: dict[str, dict[str, float | int]],
+    reference_checks: list[dict[str, float | str]],
+    metrics: dict[str, float],
+) -> list[str]:
+    """Return all failed numerical or artifact validation checks."""
+
+    failures: list[str] = []
+
+    if not np.isfinite(errors[512]) or errors[512] > 1.0e-4:
+        failures.append(
+            f"N=512 weighted L2 error {errors[512]:.3e} exceeds 1.0e-4"
+        )
+    error_sequence = np.asarray([errors[n] for n in N_CONVERGENCE])
+    if np.any(np.diff(error_sequence) >= 0.0):
+        failures.append("density convergence is not strictly decreasing over the requested N sequence")
+    if abs(metrics["FlatTSCSRatioTwenty"] - 1.0) > 5.0e-3:
+        failures.append(
+            "flat-strip Nystrom sigma/(4L) at kL=20 differs from GO by more than 0.005"
+        )
+    if metrics["BackendMaxDiff"] >= 1.0e-3:
+        failures.append(
+            f"maximum backend sigma/(4L) spread {metrics['BackendMaxDiff']:.3e} is not below 0.001"
+        )
+    for name, check in order_checks.items():
+        change = float(check["relative_change"])
+        if not np.isfinite(change) or change >= 1.0e-3:
+            failures.append(
+                f"{name} order-doubling TSCS change {change:.3e} is not below 0.001"
+            )
+    for check in reference_checks:
+        tscs_change = float(check["tscs_change"])
+        pattern_change = float(check["pattern_change"])
+        if not np.isfinite(tscs_change) or tscs_change >= 1.0e-3:
+            failures.append(
+                f"{check['label']} N=512/800 TSCS change {tscs_change:.3e} is not below 0.001"
+            )
+        if not np.isfinite(pattern_change) or pattern_change >= 1.0e-3:
+            failures.append(
+                f"{check['label']} N=512/800 pattern L2 change {pattern_change:.3e} is not below 0.001"
+            )
+    all_ratios = np.concatenate(tuple(flat_ratios.values()))
+    if not np.all(np.isfinite(all_ratios)) or np.any(all_ratios <= 0.0):
+        failures.append("flat-strip sweep contains non-finite or non-positive TSCS values")
+
+    for path in (*FIGURE_PATHS, CSV_PATH, TEX_PATH):
+        if not path.exists() or path.stat().st_size == 0:
+            failures.append(f"missing or empty output: {path.name}")
+    return failures
+
+
+def build_paper(started: float) -> None:
+    """Compile the IEEE manuscript twice with pdflatex."""
+
+    executable = shutil.which("pdflatex")
+    if executable is None:
+        raise RuntimeError("pdflatex was not found on PATH")
+    command = [executable, "-interaction=nonstopmode", "-halt-on-error", "main.tex"]
+    for pass_number in (1, 2):
+        log(f"pdflatex pass {pass_number}/2", started)
+        subprocess.run(command, cwd=HERE, check=True)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--build",
+        action="store_true",
+        help="run two pdflatex passes after regenerating and validating all outputs",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    started = time.perf_counter()
+    phi = np.linspace(0.0, 2.0 * np.pi, N_ANGLES, endpoint=False)
+    cache = SolutionCache()
+
+    log("writing geometry schematic", started)
+    figure_geometry()
+    errors = compute_convergence(cache, started)
+    flat_ratios = compute_flat_sweep(phi, started)
+    order_checks = compute_backend_order_checks(phi, flat_ratios, started)
+    log("writing verification figure", started)
+    figure_verification(errors, flat_ratios)
+
+    log("solving N=512 publication cases", started)
+    amplitudes, frequencies = compute_publication_cases(cache, phi, started)
+    reference_checks = compute_publication_reference_checks(
+        cache, phi, amplitudes, frequencies, started
+    )
+    log("writing field and polar figures", started)
+    figure_field_pattern(phi, amplitudes[H_REPRESENTATIVE])
+    figure_amplitude(phi, amplitudes)
+    figure_frequency(phi, frequencies)
+
+    backend_stack = np.vstack(
+        [
+            flat_ratios["Differentiated Nystrom"],
+            flat_ratios["MAR"],
+            flat_ratios["MoM"],
+        ]
+    )
+    metrics = {
+        "ConvErrorNFiveTwelve": errors[512],
+        "FlatTSCSRatioTwenty": float(flat_ratios["Differentiated Nystrom"][-1]),
+        "BackendMaxDiff": float(np.max(np.ptp(backend_stack, axis=0))),
+        "AmpTSCSFlat": amplitudes[0.0]["sigma"] / (4.0 * L),
+        "AmpTSCSFive": amplitudes[0.05]["sigma"] / (4.0 * L),
+        "AmpTSCSTen": amplitudes[0.10]["sigma"] / (4.0 * L),
+        "FreqTSCSTwelve": frequencies[12.0]["sigma"] / (4.0 * L),
+        "FreqTSCSSixteen": frequencies[16.0]["sigma"] / (4.0 * L),
+        "FreqTSCSTwenty": frequencies[20.0]["sigma"] / (4.0 * L),
+        "FirstOrderCutoff": float(np.pi * P),
+        "FlatOrderDoublingMaxChange": max(
+            float(check["relative_change"]) for check in order_checks.values()
+        ),
+        "ProductionMaxTSCSChange": max(
+            float(check["tscs_change"]) for check in reference_checks
+        ),
+        "ProductionMaxPatternChange": max(
+            float(check["pattern_change"]) for check in reference_checks
+        ),
+    }
+    write_csv(
+        errors,
+        flat_ratios,
+        order_checks,
+        amplitudes,
+        frequencies,
+        reference_checks,
+        phi,
+        metrics,
+    )
+    write_tex(metrics)
+
+    failures = validate(errors, flat_ratios, order_checks, reference_checks, metrics)
+    print("\nRevision metrics", flush=True)
+    for name, value in metrics.items():
+        print(f"  {name:26s} = {value:.10g}", flush=True)
+    if failures:
+        print("\nVALIDATION FAILURES", flush=True)
+        for failure in failures:
+            print(f"  FAIL: {failure}", flush=True)
+        return 2
+
+    print("\nAll numerical and artifact thresholds passed.", flush=True)
+    if args.build:
+        build_paper(started)
+    log("publication pipeline complete", started)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

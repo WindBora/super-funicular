@@ -1,556 +1,442 @@
-\documentclass[conference]{IEEEtran}
+\documentclass[conference,a4paper]{IEEEtran}
 
 \usepackage{cite}
-\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsmath,amssymb}
 \usepackage{graphicx}
-\usepackage{textcomp}
-\usepackage{xcolor}
 \usepackage{booktabs}
-\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
-    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\setcounter{dbltopnumber}{3}
+\renewcommand{\dbltopfraction}{0.95}
+
+\input{revision_results.tex}
+
 \begin{document}
 
-\title{E-Wave Plane-Wave Scattering by Sinusoidal\\
-Open PEC Strips via the Method of Discrete Singularities}
+\title{E-Polarized Plane-Wave Scattering by a Finite Sinusoidal PEC Grating via the Nystr\"om Method}
 
-\author{
-\IEEEauthorblockN{1\textsuperscript{st} Andrii Petryshyn}
-\IEEEauthorblockA{
-\textit{Laboratory of Micro and Nano Optics}\\
-\textit{O.Ya. Usikov IRE and Electronics NASU}\\
-Kharkiv, 61085, Ukraine\\
-matches708@gmail.com}
-\and
-\IEEEauthorblockN{2\textsuperscript{nd} Sergii Dukhopelnykov}
-\IEEEauthorblockA{
-\textit{Laboratory of Micro and Nano Optics}\\
-\textit{O.Ya. Usikov IRE and Electronics NASU}\\
-Kharkiv, 61085, Ukraine\\
-dukh.sergey@gmail.com}
-\and
-\IEEEauthorblockN{3\textsuperscript{rd} Tatiana Zinenko}
-\IEEEauthorblockA{
-\textit{Department of Quasi-Optics }\\
-\textit{O.Ya. Usikov IRE and Electronics NASU}\\
-Kharkiv, 61085, Ukraine\\
-tzinenko@yahoo.com}
-}
-
+\author{\IEEEauthorblockN{A. Petryshyn, S. Dukhopelnykov, and T. Zinenko}
+\IEEEauthorblockA{O. Ya. Usikov Institute for Radiophysics and Electronics of the\\
+National Academy of Sciences of Ukraine\\
+Kharkiv 61085, Ukraine}}
 
 \maketitle
 
-% ============================================================
 \begin{abstract}
-We present a full-wave numerical study of plane-wave E-wave (TM)
-scattering by two-dimensional open sinusoidal perfectly-electric-conductor
-(PEC) strips.
-The weighted SIE is discretized by a Chebyshev-Nystrom form of the
-method of discrete singularities (MDS), after analytically extracting
-the inverse-square-root edge behavior of the current.
-A flat-strip benchmark provides a consistency check: boundary residuals
-are near $10^{-13}$, while the total scattering width reaches
-40.0 wavelengths at $N=200$.
-For sinusoidal corrugation the reflected far-field develops finite-strip
-lobes near the backward infinite-periodic Floquet reference angles.
-A parametric study over amplitudes from 0.5 to 2.5 wavelengths and
-spatial frequencies from 0.10 to 0.30 inverse wavelengths shows that
-amplitude controls the relative strength of off-normal lobes while
-spatial frequency sets their angular positions.
-Across the 25 sinusoidal cases, the total scattering width spans
-38.940--40.656 wavelengths (a $4.3\%$ relative range about the mean),
-so corrugation changes both angular distribution and total scattering.
+This paper presents a Nystr\"om formulation for two-dimensional E-polarized
+plane-wave scattering by a finite sinusoidal grating made of a perfect electric
+conductor. The inverse-square-root endpoint singularity of the induced current
+is extracted as a factor, and the logarithmic integral equation is
+differentiated before the resulting Cauchy-singular equation is discretized at
+Gauss--Chebyshev nodes. The formulation accommodates arbitrary incidence
+angles. Convergence under order refinement and agreement with independently
+implemented analytical-regularization and pulse-basis methods are demonstrated
+for a flat strip, whose total scattering cross section approaches the
+geometrical-optics limit at high frequency. Results for a symmetric five-period
+grating show how corrugation height and electrical size redistribute the
+absolute differential scattering cross section. Above the first
+propagating-harmonic threshold, broadened finite-grating lobes appear near the
+reference directions of the corresponding infinite grating, while finite-length
+effects preserve a central reflection lobe and an end-generated background. The
+study therefore clarifies how infinite-grating directions can be used to
+interpret scattering by short gratings.
 \end{abstract}
 
 \begin{IEEEkeywords}
-method of discrete singularities, sinusoidal open strip, plane-wave
-scattering, finite-strip scattering, E-wave, PEC strip
+Electromagnetic scattering, sinusoidal open strip, integral equations, Nystr\"om
+method, perfect electric conductors.
 \end{IEEEkeywords}
 
-% ============================================================
 \section{Introduction}
 
-Corrugated metallic surfaces are ubiquitous in microwave engineering.
-The sinusoidal open strip is a particularly compact example: it serves
-as a meander-line delay element~\cite{wadell1991}, slow-wave resonator,
-and unit cell of high-temperature superconducting (HTS) bandpass
-filters~\cite{lancaster1997,pozar2011}.
-At microwave frequencies, HTS films satisfy $k\lambda_L\lesssim10^{-4}$
-(London penetration depth $\lambda_L\!\sim\!100$\,nm), so the PEC
-boundary condition is an excellent approximation.
+Finite corrugated conductors combine periodic-surface physics with end effects
+that are absent from an infinite grating.  Even a scalar two-dimensional model
+therefore has to resolve a singular edge current, interaction across several
+corrugations, and radiation into both halfspaces.  Early numerical treatments
+of two-dimensional diffraction and the associated quadrature techniques are
+surveyed by Nazarchuk~\cite{nazarchuk1989}.  Nystr\"om algorithms tailored to
+open strips have subsequently demonstrated controlled convergence for both
+perfect electric conductor (PEC) and material-strip
+models~\cite{shapoval2011}.
 
-When a plane wave is incident on such a strip, the corrugated surface
-couples the specularly reflected field into additional off-normal lobes
-at angles set by the sinusoidal period.
-Here a \emph{lobe} means a local maximum of the angular far-field
-amplitude.
-The corresponding infinite periodic continuation is described by Floquet
-theory~\cite{collin1991,balanis2012}, but a finite strip with few periods
-has significant endpoint diffraction that demands a full-wave treatment.
+The finite sinusoidal grating has also been studied with complementary
+methods.  Kobayashi and Eizawa used a Wiener--Hopf perturbation analysis for a
+finite PEC sinusoid~\cite{kobayashi1991}; a later H-polarized analysis is reported
+in~\cite{eizawa2014}.  Vinogradova, Kobayashi, and Eizawa later developed a
+full-wave E-polarized solution by analytical regularization and examined the
+transition between finite- and infinite-grating behavior~\cite{vinogradova2019}.
+Related resonant configurations formed by two finite sinusoidal gratings are
+analyzed in~\cite{vinogradova2021}.  These studies emphasize that periodic
+Floquet angles remain useful references, but a grating with only a few periods
+does not possess exact Floquet channels.
 
-Among rigorous 2-D methods for open-arc scattering, the classical
-\emph{method of discrete singularities}
-(MDS)~\cite{nosich2007,gandel2011} combines analytical edge-singularity
-extraction with Chebyshev Nystrom discretization.
-The implementation used here follows the differentiated MDS system: the
-current endpoint singularity is removed analytically, the first-kind SIE
-is differentiated into a Cauchy-type equation, and one supplementary
-integral condition restores the lost constant.
-The resulting $N\!\times\!N$ dense system is solved by Gaussian
-elimination; the reported residuals measure algebraic satisfaction of
-this discrete system.
-MDS has been validated for parabolic multireflector antennas with
-complex-source-point (CSP) beams~\cite{nosich2007,nosich_josa2007};
-related open-strip and reflector formulations have also been treated
-with analytical regularization, edge-conditioned Nystrom schemes, and
-rapidly convergent SIE solvers~\cite{oguzer1995,oguzer2001,tong2006,
-tsalamengas2006}. Here we apply the same open-arc framework to
-plane-wave excitation and the finite sinusoidal strip geometry.
+This paper gives a compact Nystr\"om solution for one finite sinusoidal PEC
+grating.  Its contributions are threefold.  First, the geometry is symmetric,
+all size parameters are referred to the half-span $L$, and the incident angle
+is left arbitrary in the formulation.  Second, accuracy is assessed by an
+$L^2$ density-convergence study and a three-backend comparison.  Third,
+absolute polar patterns and the
+dimensionally correct total scattering cross section (TSCS) reveal separately
+the effects of corrugation height
+and electrical size for a five-period grating.
 
-% ============================================================
-\section{Problem Formulation}
-\label{sec:formulation}
+\section{Formulation and Nystr\"om Discretization}
+\label{sec:method}
 
-\subsection{Boundary-value problem and SIE}
+\subsection{Geometry and Boundary-Value Problem}
 
-We seek the scattered E-wave phasor $U$ when a 2-D PEC arc $\Gamma$
-is illuminated by a unit-amplitude plane wave. The total phasor is
-$U_{\rm tot}=U_0+U$, and the corresponding physical field is
+For a structure invariant along $z$, E polarization is represented by the
+scalar electric component $U=E_z$ in the $x$--$y$ plane.  The zero-thickness
+PEC arc is parameterized symmetrically as
 \begin{equation}
-  u_{\rm tot}(\mathbf r,t)
-  =\Re\!\left\{U_{\rm tot}(\mathbf r)e^{-i\omega t}\right\}.
-  \label{eq:timeconvention}
+ \boldsymbol r(t)=\bigl(Lt,\;h\cos(\pi Pt)\bigr),
+ \qquad -1\leq t\leq 1,
+ \label{eq:geometry}
 \end{equation}
-Thus the common Euler factor $e^{-i\omega t}$ is suppressed below. A
-wave propagating along $\widehat{\mathbf d}=(\cos\beta,\sin\beta)$ has
-the incident phasor
-\begin{equation}
-  U_0(\mathbf{r})
-  = e^{ik(x\cos\beta + y\sin\beta)},
-  \label{eq:planewave}
-\end{equation}
-with $k=2\pi/\lambda$, all lengths in wavelengths ($\lambda=1$, $k=2\pi$),
-and $\beta=\pi/2$ (normal incidence, wave propagating in the $+y$
-direction).
-The scattered field satisfies the Helmholtz equation outside $\Gamma$,
-the outgoing Sommerfeld condition
-$\sqrt r\,(\partial U/\partial r-ikU)\to0$, local energy finiteness at
-arc endpoints, and the Dirichlet condition $U|_\Gamma=-U_0|_\Gamma$.
+where $2L$ is its projected width, $h/L$ is the relative corrugation height,
+and the integer $P$ is the number of complete periods.  Its projected period
+is $\Lambda=2L/P$.  Hence geometry is specified by $h/L$ and $P$, while
+frequency enters only through the electrical size $kL$.  The notation and
+angle convention are summarized in Fig.~\ref{fig:geometry}.
 
-The single-layer representation of $U$ leads, after parameterizing the arc
-as $\mathbf{r}(t)=(x(t),y(t))$, $t\in[-1,1]$, and factoring the
-inverse-square-root edge singularity into a smooth density $v(t)$
-via $j\,|\mathbf{r}'(t)|=v(t)(1-t^2)^{-1/2}$, to the first-kind SIE
-\begin{equation}
-  \int_{-1}^{1}
-  H_0^{(1)}\!\left(kR(t,t_0)\right)v(t)\,
-  \frac{dt}{\sqrt{1-t^2}}
-  = -U_0(t_0),
-  \label{eq:sie}
-\end{equation}
-where $R(t,t_0)=|\mathbf{r}(t)-\mathbf{r}(t_0)|$.
-For the adopted $e^{-i\omega t}$ convention, $H_0^{(1)}(kR)$ is the
-outgoing cylindrical-wave kernel.
+\begin{figure}[!t]
+ \centering
+ \includegraphics[width=\columnwidth]{fig1_geometry.pdf}
+ \caption{Symmetric finite sinusoidal PEC grating and angle convention.  The
+ incident propagation direction is
+ $\widehat{\boldsymbol d}=(\cos\beta,\sin\beta)$; observation angle $\varphi$
+ is measured counterclockwise from $+x$.}
+ \label{fig:geometry}
+\end{figure}
 
-\subsection{MDS discretization, geometry, and Floquet references}
+With the suppressed time factor $e^{-i\omega t}$, a unit-amplitude incident
+plane wave is
+\begin{equation}
+ U^{\rm inc}(\boldsymbol r)
+ =\exp\!\left(ik\widehat{\boldsymbol d}\mathbin{\cdot}\boldsymbol r\right),
+ \qquad
+ \widehat{\boldsymbol d}=(\cos\beta,\sin\beta).
+ \label{eq:incident}
+\end{equation}
+Thus constant-phase fronts travel along $\widehat{\boldsymbol d}$.  The
+reported computations use normal incidence, $\beta=\pi/2$, so the wave travels
+from the lower to the upper halfspace; no such restriction is made in the
+equations.  The scattered field $U^{\rm sc}$ satisfies the Helmholtz equation,
+the outgoing Sommerfeld condition, local energy finiteness at both endpoints,
+and
+\begin{equation}
+ U^{\rm inc}+U^{\rm sc}=0 \quad \text{on }\Gamma .
+ \label{eq:pec}
+\end{equation}
+The outgoing Green kernel is consequently $H_0^{(1)}$.
 
-After differentiation, the MDS system is discretized by weighted
-Chebyshev quadrature plus one supplementary row. With source nodes
-$t_i=\cos[(2i-1)\pi/(2n)]$, $i=1,\dots,n$, and second-kind collocation
-nodes $\tau_j=\cos[j\pi/n]$, $j=1,\dots,n-1$, the boundary rows are
-\begin{equation}
-  \frac{1}{n}\sum_{i=1}^{n}
-  \left[\frac{1}{t_i-\tau_j}+K(t_i,\tau_j)\right]v(t_i)
-  = f(\tau_j),
-  \label{eq:mds}
-\end{equation}
-where $K$ is the regularized derivative kernel and, for
-\eqref{eq:planewave},
-\begin{equation}
-  f(\tau)=-\frac{dU_0}{d\tau}
-  =-ikU_0\!\left(\mathbf r(\tau)\right)
-  \widehat{\mathbf d}\mathbin{\cdot}\mathbf r'(\tau).
-  \label{eq:rhs}
-\end{equation}
-For one strip the regularized kernel is evaluated as
-\begin{equation}
-  K(t,\tau)=
-  -kH_1^{(1)}(kR)\frac{\partial R}{\partial\tau}
-  -\frac{1}{t-\tau},
-  \label{eq:kreg}
-\end{equation}
-with
-\begin{equation}
-  \frac{\partial R}{\partial\tau}
-  =-\frac{[\mathbf{r}(t)-\mathbf{r}(\tau)]
-  \cdot\mathbf{r}'(\tau)}{R(t,\tau)} .
-  \label{eq:drdtau}
-\end{equation}
-Thus the singular part is handled analytically, while only a smooth
-remainder is sampled numerically.
-The supplementary row is
-\begin{equation}
-  \frac{1}{n}\sum_{i=1}^{n}M(t_i)v(t_i)=c,
-  \label{eq:supplement}
-\end{equation}
-where $M$ is the weighted single-layer integral of the kernel and
-$c=-\int_{-1}^{1}U_0(\tau)d\tau/\sqrt{1-\tau^2}$.
-For self interaction the logarithmic term in $M$ is also extracted:
-\begin{equation}
-  M(t_i)=\!\int_{-1}^{1}\!
-  \left[H_0^{(1)}(kR)-\frac{2i}{\pi}\ln|t_i-\tau|\right]
-  \frac{d\tau}{\sqrt{1-\tau^2}}-2i\ln2 .
-  \label{eq:mself}
-\end{equation}
-Equations~\eqref{eq:mds}--\eqref{eq:supplement} are solved by Gaussian
-elimination.
-The scattered far-field pattern is evaluated from the asymptotic
-single-layer potential.  The negative spatial sign below comes from the
-large-distance expansion of $H_0^{(1)}(k|\mathbf r-\mathbf r'|)$ and is
-therefore consistent with the positive sign in~\eqref{eq:planewave}:
-\begin{equation}
-  \Phi_{\rm sc}(\varphi)
-  \approx
-  \frac{1}{n}\sqrt{\frac{2}{\pi i}}
-  \sum_{i=1}^{n}
-  e^{-ik[\cos\varphi\,x(t_i)+\sin\varphi\,y(t_i)]}v(t_i),
-  \label{eq:farfield}
-\end{equation}
-and the total 2-D scattering width is
-\begin{equation}
-  \sigma
-  = \frac{1}{\pi}\int_0^{2\pi}
-    \bigl|\Phi_{\rm sc}(\varphi)\bigr|^2\,d\varphi.
-  \label{eq:sigma}
-\end{equation}
-This value follows the far-field normalization in~\eqref{eq:farfield}
-and is used here for relative comparison across the same numerical
-setup.
-The residual reported below is
-\begin{equation}
-  \varepsilon_{\rm bc}=\|A\mathbf{v}-\mathbf{b}\|_{\infty},
-  \label{eq:residual}
-\end{equation}
-where $A\mathbf{v}=\mathbf{b}$ denotes the assembled discrete MDS
-system.
+\subsection{Edge-Conditioned Integral Equation}
 
-The sinusoidal strip with $L=10\lambda$ and phase zero is
+Absorb the constant in the electromagnetic Green function into a scaled line
+density $q$.  Its known endpoint behavior is factored as
 \begin{equation}
-  \Gamma_s
-  = \!\left\{(x,y):\;
-  x = \tfrac{L}{2}\,t,\quad
-  y = A\sin\!\left(2\pi\nu x\right),\quad
-  t\in[-1,1]
-  \right\}\!.
-  \label{eq:strip}
+ q(t)|\boldsymbol r'(t)|
+ =\frac{v(t)}{\pi\sqrt{1-t^2}},
+ \label{eq:edgefactor}
 \end{equation}
-Angles $\varphi$ are measured counterclockwise from $+x$. For the
-infinite periodic continuation with period $\Lambda=1/\nu$,
-normal-incidence Floquet theory gives the two angular branches
-\begin{equation}
-  \begin{aligned}
-    \varphi_m^{\rm f} &= \arccos(m\nu),\\
-    \varphi_m^{\rm b} &= 2\pi-\arccos(m\nu),
-  \end{aligned}
-  \qquad |m\nu|<1,
-  \label{eq:floquet}
-\end{equation}
-where $\varphi_m^{\rm f}$ lies in the $+y$ forward (shadow-side)
-hemisphere and $\varphi_m^{\rm b}$ lies in the $-y$ backward
-(reflected) hemisphere. The infinite PEC continuation supports the
-reflected branch; the finite strip additionally produces forward
-endpoint diffraction. Its finite length ($L\nu$ periods) broadens the
-periodic references into finite-strip lobes.
-With $N=200$ nodes the worst-case arc length in the sweep
-($A=2.5\lambda$, $\nu=0.30$) is $\approx32.31\lambda$, giving about
-6.2 nodes per wavelength along the strip.
-Near-field figures show the total field $U_0+U$ on a Cartesian grid,
-normalized to the maximum intensity in the plotted window. Far-field
-curves show $20\log_{10}|\Phi_{\rm sc}|$ normalized to the peak of the
-corresponding pattern, so their purpose is angular comparison rather
-than absolute calibration.
+where $v$ is smooth.  Equation~\eqref{eq:edgefactor} extracts the singular
+factor; it does not remove the physical edge singularity.  The scattered field
+and the logarithmically singular integral equation (IE) are then written using
+$\rho_t=|\boldsymbol r-\boldsymbol r(t)|$ and
+$R(t,\tau)=|\boldsymbol r(t)-\boldsymbol r(\tau)|$, with
+$G(s)=H_0^{(1)}(ks)$, $w(t)=(1-t^2)^{-1/2}$, and
+$u_0(\tau)=U^{\rm inc}(\boldsymbol r(\tau))$:
+\begin{align}
+ U^{\rm sc}(\boldsymbol r)
+ &=\frac{1}{\pi}\int_{-1}^{1}
+ G(\rho_t)
+ v(t)w(t)\,dt,                                                       \label{eq:potential}\\
+ \frac{1}{\pi}\int_{-1}^{1}
+ G\!\left(R(t,\tau)\right)
+ v(t)w(t)\,dt
+ &=-u_0(\tau).                                                       \label{eq:ie}
+\end{align}
+The explicit $1/\pi$ makes the continuous and discrete normalizations
+transparent.
 
-% ============================================================
+First, the logarithmically singular IE~\eqref{eq:ie} is differentiated with
+respect to $\tau$, giving a Cauchy-singular IE.  Second, that equation is
+discretized.  In particular, let
+\begin{align}
+ c_H&=-\frac{2i}{\pi},                                                   \label{eq:ch}\\
+ K(t,\tau)&=\frac{\partial}{\partial\tau}
+ H_0^{(1)}\!\left(kR(t,\tau)\right)-\frac{c_H}{t-\tau},                 \label{eq:kernel}\\
+ f(\tau)&=-\frac{d}{d\tau}U^{\rm inc}(\boldsymbol r(\tau))
+ =-ikU^{\rm inc}(\boldsymbol r(\tau))
+ \widehat{\boldsymbol d}\mathbin{\cdot}\boldsymbol r'(\tau).
+ \label{eq:rhs}
+\end{align}
+The coefficient $c_H$ follows directly from the small-argument expansion of
+$H_0^{(1)}$; with it, $K$ has a finite diagonal limit.  The differentiated
+equation is
+\begin{equation}
+ \frac{1}{\pi}\operatorname{p.v.}\!\int_{-1}^{1}
+ \left[\frac{c_H}{t-\tau}+K(t,\tau)\right]
+ \frac{v(t)}{\sqrt{1-t^2}}\,dt=f(\tau).
+ \label{eq:cauchyie}
+\end{equation}
+
+Use the Gauss--Chebyshev nodes and the interlaced second-kind points
+\begin{align}
+ t_i&=\cos\frac{(2i-1)\pi}{2N},&&i=1,\ldots,N, \notag\\
+ \tau_j&=\cos\frac{j\pi}{N},&&j=1,\ldots,N-1.                    \label{eq:nodes}
+\end{align}
+Writing $v_i=v(t_i)$, the implementation returns these samples as
+\texttt{v\_nodes}.  Thus its publication-facing density already includes the
+factor $\pi$ relative to a convention that retains the quadrature weight
+$\pi/N$.
+For $j=1,\ldots,N-1$, the boundary rows are
+\begin{equation}
+ \frac{1}{N}\sum_{i=1}^{N}
+ \left[\frac{c_H}{t_i-\tau_j}+K(t_i,\tau_j)\right]v_i=f(\tau_j).
+ \label{eq:nystrom}
+\end{equation}
+The $1/N$ factor is precisely the Gauss--Chebyshev weight $\pi/N$ combined
+with the $1/\pi$ in~\eqref{eq:cauchyie}.
+
+Differentiation loses one constant.  Equivalence to~\eqref{eq:ie} is restored
+with one supplementary row,
+\begin{equation}
+ \frac{1}{N}\sum_{i=1}^{N}M(t_i)v_i=c,                                  \label{eq:supprow}
+\end{equation}
+where
+\begin{align}
+ M(t)&=\int_{-1}^{1}H_0^{(1)}\!\left(kR(t,\tau)\right)
+          \frac{d\tau}{\sqrt{1-\tau^2}},                                \label{eq:mdef}\\
+ c&=-\int_{-1}^{1}U^{\rm inc}(\boldsymbol r(\tau))
+          \frac{d\tau}{\sqrt{1-\tau^2}}.                               \label{eq:cdef}
+\end{align}
+The logarithmic self term in $M$ is subtracted analytically and its smooth
+remainder is evaluated by a higher-order Chebyshev rule.  Equations
+\eqref{eq:nystrom} and~\eqref{eq:supprow} form an $N\times N$ dense system.
+
+\subsection{Far Field and TSCS}
+
+For $\widehat{\boldsymbol s}(\varphi)=(\cos\varphi,\sin\varphi)$, define
+$\Phi_{\rm sc}$ by
+$U^{\rm sc}(r,\varphi)\sim e^{ikr}\Phi_{\rm sc}(\varphi)/\sqrt{kr}$.
+The same quadrature gives
+\begin{equation}
+ \Phi_{\rm sc}^{(N)}(\varphi)
+ =\sqrt{\frac{2}{\pi i}}\,\frac{1}{N}\sum_{i=1}^{N}
+ e^{-ik\widehat{\boldsymbol s}(\varphi)\cdot\boldsymbol r(t_i)}v_i.
+ \label{eq:farfield}
+\end{equation}
+For unit incident amplitude, the differential and total scattering
+cross sections are
+\begin{equation}
+ \frac{d\sigma}{d\varphi}=\frac{|\Phi_{\rm sc}(\varphi)|^2}{k},
+ \qquad
+ \sigma=\frac{1}{k}\int_{0}^{2\pi}|\Phi_{\rm sc}(\varphi)|^2\,d\varphi.
+ \label{eq:tscs}
+\end{equation}
+Both have the required length dimension.  The polar plots below display the
+absolute quantity $10\log_{10}[(d\sigma/d\varphi)/L]$; they are not normalized
+to the maximum of each curve.
+
+For reference, the infinite periodic continuation has tangential harmonics
+\begin{equation}
+ \xi_m=\cos\beta+\frac{m\pi P}{kL},\qquad |\xi_m|<1.                    \label{eq:floquet}
+\end{equation}
+Their upper- and lower-halfspace angles are $\arccos\xi_m$ and
+$2\pi-\arccos\xi_m$, respectively.  These angles are only markers for the
+broad lobes of the finite grating; below they are called infinite-grating
+reference directions.  At normal incidence this reduces to
+\begin{equation}
+ \cos\varphi_m=\frac{m\pi P}{kL},\qquad
+ \left|\frac{m\pi P}{kL}\right|<1.                                    \label{eq:floquetnormal}
+\end{equation}
+The first-order
+markers become propagating at
+\begin{equation}
+ kL=\pi P=\FirstOrderCutoff \quad (P=5).                                 \label{eq:cutoff}
+\end{equation}
+
+\begin{figure*}[!t]
+ \centering
+ \includegraphics[width=\textwidth]{fig2_verification.pdf}
+ \caption{Verification. (a) Relative $L^2$ error of the smooth density versus
+ interpolation order for $P=5$, $h/L=0.10$, and $kL=20$.
+ (b) Flat-strip total scattering cross section (TSCS), normalized by its
+ geometrical-optics limit $4L$, from the differentiated Nystr\"om method
+ ($N=256$), the method of analytical regularization (MAR; $N=256$), and a
+ pulse-basis method of moments (MoM; 192 elements); the dash-dotted line is the
+ geometrical-optics (GO) limit.}
+ \label{fig:verification}
+\end{figure*}
+
 \section{Numerical Results}
 \label{sec:results}
 
-\subsection{Flat strip benchmark}
+\subsection{Convergence and Cross-Validation}
 
-Setting $A=0$ gives a flat horizontal strip of length $L=10\lambda$.
-The near-field and far-field benchmark plots are shown in
-Figs.~\ref{fig:flat-near} and~\ref{fig:flat-far}; the boundary residual
-of the $N=200$ discrete system is of order $10^{-13}$.
-The reflected standing-wave region is below the strip, on the incident
-side, whereas the shadow region is above it. This agrees with the
-upward wave-vector arrow in Fig.~\ref{fig:flat-near}.
-The far-field pattern exhibits the expected two-lobe structure:
-the $90^\circ$ lobe corresponds to forward diffraction (shadow region),
-and the $270^\circ$ lobe to backward specular reflection, with weaker
-edge-diffraction contributions at $0^\circ$ and $180^\circ$.
+Fig.~\ref{fig:verification}(a) reports a relative weighted $L^2$ error of
+the smooth density for $P=5$, $h/L=0.10$, $kL=20$, and $\beta=\pi/2$.  Let
+$I_Nv_N$ denote its Chebyshev interpolant and set
+$\theta_\ell=(\ell+1/2)\pi/4096$.  With the $N_{\rm ref}=800$ solution as the
+reference, the plotted error is
+\begin{equation}
+ \epsilon_N=\left[
+ \frac{\sum_{\ell=0}^{4095}|I_Nv_N(\cos\theta_\ell)
+       -I_{800}v_{800}(\cos\theta_\ell)|^2}
+      {\sum_{\ell=0}^{4095}|I_{800}v_{800}(\cos\theta_\ell)|^2}
+ \right]^{1/2}.
+ \label{eq:l2error}
+\end{equation}
+This midpoint sampling in $\theta$ approximates the
+$L^2_{1/\sqrt{1-t^2}}$ norm in $t$.  For
+$N=32,48,64,96,128,192,256,384,512$, the error decreases systematically and
+reaches \ConvErrorNFiveTwelve at $N=512$.  The latter order is used for all
+corrugated-grating results below.  Repeating every unique publication case at
+$N=800$ changes the TSCS by at most \ProductionMaxTSCSChange and the full
+complex far-field pattern by at most \ProductionMaxPatternChange in relative
+$L^2$ norm.
 
-\begin{figure}[!t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig1_flatstrip_near.png}
-  \caption{Flat strip ($A=0$, $L=10\lambda$, $N=200$): normalized
-  total near-field intensity $|U_{\rm tot}|^2$ in dB. The arrow points
-  from below along the $+y$ incident-wave direction.}
-  \label{fig:flat-near}
-\end{figure}
+The second test uses a flat strip ($h=0$) over 41 electrical sizes
+$0.25\leq kL\leq20$.  Fig.~\ref{fig:verification}(b) compares the present
+differentiated Nystr\"om implementation with separately assembled
+analytical-regularization and pulse-basis method-of-moments backends.  The
+maximum spread in $\sigma/(4L)$ among the three results is \BackendMaxDiff.
+The first two use $N=256$, and the pulse discretization uses 192 elements.
+At the most demanding endpoint, $kL=20$, doubling those orders changes the
+TSCS by at most \FlatOrderDoublingMaxChange.
+At $kL=20$ the Nystr\"om value is
+\FlatTSCSRatioTwenty.  This is close to the geometrical-optics limit
+$\sigma/(4L)\to1$ for a broadside-illuminated flat PEC strip of projected
+width $2L$~\cite{shapoval2011}, but it is correctly retained as a
+finite-frequency value.
 
-\begin{figure}[!t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig2_flatstrip_far.png}
-  \caption{Flat strip normalized scattered far-field amplitude. The
-  dashed lines mark forward diffraction at $90^\circ$ and backward
-  specular reflection at $270^\circ$.}
-  \label{fig:flat-far}
-\end{figure}
+\subsection{Representative Five-Period Grating}
 
-Table~\ref{tab:convergence} shows $N$-convergence of $\sigma$.
-The sequence rapidly approaches $40.0\lambda$, while the residual
-remains near $10^{-13}$ or better. This residual measures algebraic
-satisfaction of the discrete MDS system; convergence of the physical
-observable is assessed by the change in $\sigma$.
+Fig.~\ref{fig:fieldpattern} shows the normal-incidence solution for
+$P=5$, $h/L=0.10$, and $kL=20$.  The total-field intensity is shown relative
+to the unit incident-field intensity.  Below the grating, incident and reflected fields
+interfere; above it, the pattern contains the shadow lobe.  The
+polar panel gives the absolute differential cross section over $0\leq
+\varphi<2\pi$.  At this electrical size the $m=\pm1$ periodic-reference
+harmonics are propagating, and the calculated finite-grating pattern contains
+broad off-normal structure near their infinite-grating reference directions.
+The central
+reflection lobe and end-generated background remain present because only five
+periods are retained.
 
-\begin{table}[!t]
-  \caption{N-convergence: total scattering width $\sigma$ for the flat
-  strip ($A=0$, $L=10\lambda$, $\beta=\pi/2$).}
-  \label{tab:convergence}
-  \centering
-  \footnotesize
-  \setlength{\tabcolsep}{4.5pt}
-  \begin{tabular}{rrcr}
-    \toprule
-    $N$ & $\sigma\;(\lambda)$ & Rel.\ change & Residual \\
-    \midrule
-    32  & 39.857 & ---                    & $O(10^{-13})$ \\
-    64  & 39.999 & $3.6\!\times\!10^{-3}$ & $O(10^{-13})$ \\
-    100 & 40.0 & $2.8\!\times\!10^{-5}$ & $O(10^{-13})$ \\
-    150 & 40.0 & $1.2\!\times\!10^{-6}$ & $O(10^{-13})$ \\
-    200 & 40.0 & $2.2\!\times\!10^{-8}$ & $O(10^{-13})$ \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\begin{figure*}[!t]
+ \centering
+ \includegraphics[width=0.83\textwidth]{fig3_field_pattern.pdf}
+ \caption{Five-period grating at $P=5$, $h/L=0.10$, $kL=20$, and
+ $\beta=\pi/2$. (a) Relative total-field intensity
+ $|U^{\rm inc}+U^{\rm sc}|^2/|U^{\rm inc}|^2$. (b) Absolute polar
+ differential scattering cross section, shown as
+ $10\log_{10}[(d\sigma/d\varphi)/L]$ on the common $-30$ to $+15$ dB scale.}
+ \label{fig:fieldpattern}
+\end{figure*}
 
-Additional flat-strip checks at $N=400$ and $N=600$ changed the displayed
-value only beyond the shown precision. Thus $N=200$ is used as the
-working resolution for the sweep.
+\subsection{Height and Electrical-Size Dependence}
 
-\subsection{Sinusoidal strip: finite-strip Floquet references}
+At fixed $P=5$ and $kL=20$, increasing $h/L$ changes the phase and magnitude
+of the induced current across each corrugation.  Fig.~\ref{fig:amplitude}
+shows the resulting redistribution among the specular and off-normal lobes.
+Because every panel has the same absolute radial scale, changes in level can be
+compared directly.  The normalized TSCS values for $h/L=0$, $0.05$, and
+$0.10$ are, respectively,
+\begin{equation}
+ \frac{\sigma}{4L}=
+ \AmpTSCSFlat,\quad \AmpTSCSFive,\quad \AmpTSCSTen.
+ \label{eq:ampvalues}
+\end{equation}
+Thus corrugation changes both the angular distribution and the integrated
+scattered power; the polar curves are not merely rescaled copies.
 
-For $A=1.5\lambda$, $\nu=0.20\,\lambda^{-1}$ ($L\nu=2$ periods)
-the boundary residual is of order $10^{-13}$ and
-$\sigma=40.011\lambda$.
-The near-field in Fig.~\ref{fig:sin-near} shows that the corrugation
-distorts the reflected standing-wave structure on the incident side
-below the arc and produces a diffracted shadow-side field above it.
-The corresponding far-field pattern is shown in Fig.~\ref{fig:sin-far}.
+\begin{figure*}[!t]
+ \centering
+ \includegraphics[width=0.83\textwidth]{fig4_amplitude_polar.pdf}
+ \caption{Absolute polar differential scattering cross section, shown as
+ $10\log_{10}[(d\sigma/d\varphi)/L]$, for $P=5$, $kL=20$, and
+ $\beta=\pi/2$: (a) $h/L=0$; (b) $h/L=0.05$; and (c) $h/L=0.10$. Each
+ panel contains one curve and uses the common $-30$ to $+15$ dB scale.}
+ \label{fig:amplitude}
+\end{figure*}
 
-\begin{figure}[!t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig3_sinusoidal_near.png}
-  \caption{Sinusoidal strip ($A=1.5\lambda$, $\nu=0.20\,\lambda^{-1}$):
-  normalized total near-field intensity with the strip profile overlaid.
-  The arrow points from below along the $+y$ incident direction.}
-  \label{fig:sin-near}
-\end{figure}
+Frequency changes both the overall electrical width and the set of
+propagating periodic-reference harmonics.  For $P=5$ and $h/L=0.10$, the
+three cases in Fig.~\ref{fig:frequency} have
+\begin{align}
+ \frac{\sigma}{4L}&=\FreqTSCSTwelve,&&kL=12, \notag\\
+ &=\FreqTSCSSixteen,&&kL=16, \notag\\
+ &=\FreqTSCSTwenty,&&kL=20.                              \label{eq:freqvalues}
+\end{align}
+\begin{figure*}[!t]
+ \centering
+ \includegraphics[width=0.83\textwidth]{fig5_frequency_polar.pdf}
+ \caption{Absolute polar differential scattering cross section, shown as
+ $10\log_{10}[(d\sigma/d\varphi)/L]$, for $P=5$, $h/L=0.10$, and
+ $\beta=\pi/2$: (a) $kL=12$; (b) $kL=16$; and (c) $kL=20$. Each panel
+ contains one curve and uses the common $-30$ to $+15$ dB scale. The
+ first-order periodic-reference harmonics are cut off at $kL=5\pi$ and
+ propagate above it.}
+ \label{fig:frequency}
+\end{figure*}
 
-\begin{figure}[!t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig4_sinusoidal_far.png}
-  \caption{Sinusoidal strip normalized scattered far-field amplitude.
-  Dotted markers show reflected $m\ne0$ Floquet references; dashed
-  markers identify the forward and backward $m=0$ directions.}
-  \label{fig:sin-far}
-\end{figure}
+At $kL=12$ the first-order periodic harmonics are evanescent.  They become
+propagating above the threshold in~\eqref{eq:cutoff}, so first-order
+finite-grating lobes appear in the $kL=16$ pattern and separate further from
+their cutoff directions at $kL=20$.  Their finite width and interaction with
+the background preclude interpreting them as exact diffraction orders.
 
-The far-field in Fig.~\ref{fig:sin-far} reveals a forward finite-aperture
-lobe at $90^\circ$ and strong reflected off-normal lobes near the
-$m=-1$ and $m=+1$ references $258.5^\circ$ and $281.5^\circ$,
-respectively. The computed maxima occur at approximately $258.2^\circ$
-and $281.7^\circ$. Weaker $m=-2$ and $m=+2$ reflected signatures occur
-near the $246.4^\circ$ and $293.6^\circ$ references. These angles are
-consistent with the backward branch in~\eqref{eq:floquet} for
-$\nu=0.20\,\lambda^{-1}$; finite length broadens and slightly shifts
-the maxima. The corresponding forward first-order references at
-$101.5^\circ$ and $78.5^\circ$ are much weaker and should not be
-interpreted as the dominant reflected orders.
-
-\subsection{Parametric pattern evolution}
-
-Figures~\ref{fig:amp-sweep} and~\ref{fig:freq-sweep} summarize two
-parametric sweeps over the reflected hemisphere
-($180^\circ$--$360^\circ$).
-
-\begin{figure}[!t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig5_amplitude_sweep.png}
-  \caption{Reflected-hemisphere pattern evolution at fixed
-  $\nu=0.20\,\lambda^{-1}$ as $A$ varies. Dotted verticals mark the
-  backward $m=\pm1$ Floquet-reference angles.}
-  \label{fig:amp-sweep}
-\end{figure}
-
-\begin{figure}[!t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig6_frequency_sweep.png}
-  \caption{Reflected-hemisphere pattern evolution at fixed
-  $A=1.5\lambda$ as $\nu$ varies. Dotted verticals mark the backward
-  $m=\pm1$ reference angles for each spatial frequency.}
-  \label{fig:freq-sweep}
-\end{figure}
-
-\emph{Amplitude dependence} [Fig.~\ref{fig:amp-sweep}]:
-For the flat strip ($A=0$) the dominant reflected lobe sits at the
-$270^\circ$ specular direction. Changing $A$ at fixed
-$\nu=0.20\,\lambda^{-1}$ transfers relative amplitude among this lobe
-and the off-normal reflected lobes near $258.5^\circ$ and $281.5^\circ$.
-The dependence is not monotonic, but the first-order lobes become
-especially prominent near $A=1.5$--$2.0\lambda$.
-
-\emph{Frequency dependence} [Fig.~\ref{fig:freq-sweep}]:
-With $A=1.5\lambda$ fixed, increasing $\nu$ moves the backward $m=+1$
-reference from $275.7^\circ$ ($\nu=0.10$) to $287.5^\circ$
-($\nu=0.30$), while the $m=-1$ reference moves from $264.3^\circ$ to
-$252.5^\circ$, following~\eqref{eq:floquet}.
-Because the finite strips contain only $L\nu=1$--3 periods, the observed
-maxima are broad and can be shifted from the infinite-periodic markers.
-The $m=\pm2$ references move farther from the specular direction as
-$\nu$ increases and can organize additional weaker maxima.
-Across all 25 configurations the total scattering width $\sigma$ spans
-$38.940$--$40.656\lambda$; the range is $1.715\lambda$, or $4.3\%$ of
-the mean value.
-The smallest value occurs at $(A,\nu)=(2.0\lambda,0.25\lambda^{-1})$,
-and the largest at $(2.5\lambda,0.20\lambda^{-1})$.
-All sweep residuals remain of order $10^{-13}$ and below
-$6\!\times\!10^{-13}$ in the current runs.
-
-% ============================================================
-\section{Discussion}
-\label{sec:discussion}
-
-The flat-strip result separates the finite-aperture baseline from the
-corrugation effects. For a horizontal PEC strip under normal incidence,
-the dominant forward and backward lobes are set by aperture diffraction
-and endpoint scattering. A sinusoidal profile mainly rephases the current
-density along the same open conducting arc. Thus the integrated width
-changes modestly in the sweep, while individual angular lobes can change
-by many decibels.
-
-The Floquet markers should also be read carefully. The forward branch
-$\varphi_m^{\rm f}$ and reflected branch $\varphi_m^{\rm b}$ are exact
-angles for an infinite periodic continuation, whereas the simulated
-strip contains only $L\nu=1$--3 periods. The markers therefore organize
-broad finite-aperture maxima rather than define strict finite-strip
-diffraction orders. Endpoint contributions and local strip slope can
-shift the actual peak positions.
-
-The current implementation is restricted to the PEC Dirichlet model. It
-therefore provides a clean reference case, while film thickness, kinetic
-inductance, dielectric loading, and losses should be treated later
-through impedance or transmission boundary conditions.
-
-% ============================================================
 \section{Conclusion}
-\label{sec:conclusion}
 
-The MDS solver was applied to E-wave plane-wave scattering by
-sinusoidal open PEC strips.
-The solver was checked on a flat-strip benchmark: boundary residuals
-remained near $10^{-13}$ and $\sigma$ converged to
-$40.0\lambda$ by $N=200$.
-For the sinusoidal strip, finite-strip far-field lobes were found near
-the reflected infinite-periodic Floquet references
-$\varphi_m^{\rm b}=2\pi-\arccos(m\nu)$, with finite-length broadening
-and small peak shifts.
-The parametric study identifies two independent design knobs: corrugation
-amplitude $A$ controls the relative strength of off-normal lobes, and
-spatial frequency $\nu$ sets the reflected Floquet-reference angles.
-With the normalization used here, total scattering width is not invariant
-in the tested range: it spans
-$38.940$--$40.656\lambda$ across the sinusoidal sweep.
-For superconducting meander-line devices these findings imply that the
-corrugation profile controls both the far-field scattering signature and
-the total scattered width, enabling shape-based crosstalk management in
-densely integrated microwave circuits.
-Planned extensions include H-wave polarization, oblique incidence, and
-impedance boundary conditions for resistive or finite-conductivity layers.
+An edge-conditioned integral equation, discretized with the Nystr\"om
+technique, has been formulated for E-polarized plane-wave scattering by a
+finite sinusoidal PEC grating.  The formulation accommodates arbitrary
+incidence, uses the outgoing $H_0^{(1)}$ kernel consistently with
+$e^{-i\omega t}$, and retains the correct $1/k$ factor in the TSCS.  Density
+convergence, agreement among three separately implemented formulations, and the approach of
+the flat-strip result to its geometrical-optics limit provide complementary
+accuracy checks.  For the five-period grating, height mainly redistributes
+scattering among angular lobes, whereas electrical size determines when
+periodic-reference harmonics become propagating.  Absolute polar plots and
+the reported $\sigma/(4L)$ values show that both redistribution and total
+scattered power vary with the profile.
 
-% ============================================================
+\IEEEtriggeratref{2}
 \begin{thebibliography}{00}
 
-\bibitem{wadell1991}
-B.~C.~Wadell,
-\emph{Transmission Line Design Handbook}.
-Norwood, MA: Artech House, 1991.
+\bibitem{nazarchuk1989}
+Z.~T. Nazarchuk, \emph{Numerical Investigation of Wave Diffraction from
+Cylindrical Structures}. Kyiv, Ukraine: Naukova Dumka, 1989, in Russian.
 
-\bibitem{lancaster1997}
-M.~J.~Lancaster,
-\emph{Passive Microwave Device Applications of High-Temperature
-  Superconductors}.
-Cambridge, U.K.: Cambridge Univ. Press, 1997.
+\bibitem{shapoval2011}
+O.~V. Shapoval, R. Sauleau, and A.~I. Nosich, ``Scattering and absorption of
+waves by flat material strips analyzed using generalized boundary conditions
+and Nystr\"om-type algorithm,'' \emph{IEEE Trans. Antennas Propag.}, vol. 59,
+no. 9, pp. 3339--3346, Sep. 2011, doi: 10.1109/TAP.2011.2161547.
 
-\bibitem{pozar2011}
-D.~M.~Pozar,
-\emph{Microwave Engineering}, 4th~ed.
-Hoboken, NJ: Wiley, 2011.
+\bibitem{kobayashi1991}
+K. Kobayashi and T. Eizawa, ``Plane wave diffraction by a finite sinusoidal
+grating,'' \emph{IEICE Trans. Electron.}, vol. E74-C, no. 9, pp. 2815--2826,
+Sep. 1991, doi: 10.1587/e74-c\_9\_2815.
 
-\bibitem{collin1991}
-R.~E.~Collin,
-\emph{Field Theory of Guided Waves}, 2nd~ed.
-New York: IEEE Press, 1991.
+\bibitem{eizawa2014}
+T. Eizawa and K. Kobayashi, ``Wiener--Hopf analysis of the H-polarized plane
+wave diffraction by a finite sinusoidal grating,'' \emph{Prog.
+Electromagn. Res.}, vol. 149, pp. 1--13, 2014,
+doi: 10.2528/PIER14063007.
 
-\bibitem{balanis2012}
-C.~A.~Balanis,
-\emph{Advanced Engineering Electromagnetics}, 2nd~ed.
-Hoboken, NJ: Wiley, 2012.
+\bibitem{vinogradova2019}
+E.~D. Vinogradova, K. Kobayashi, and T. Eizawa, ``Full wave analysis of plane
+wave diffraction by a finite sinusoidal grating: E-polarization case,''
+\emph{Wave Motion}, vol. 86, pp. 44--62, Mar. 2019,
+doi: 10.1016/j.wavemoti.2018.12.006.
 
-\bibitem{nosich2007}
-A.~A.~Nosich and Yu.~V.~Gandel,
-``Numerical analysis of quasioptical multireflector antennas in 2-D
-  with the method of discrete singularities: E-wave case,''
-\emph{IEEE Trans.\ Antennas Propag.}, vol.~55, no.~2, pp.~399--406,
-Feb.~2007.
-
-\bibitem{gandel2011}
-Yu.~V.~Gandel,
-``Boundary-value problems for the Helmholtz equation and their discrete
-  mathematical models,''
-\emph{J.\ Math.\ Sci.}, vol.~171, no.~1, pp.~74--88, 2010.
-
-\bibitem{nosich_josa2007}
-A.~A.~Nosich, Yu.~V.~Gandel, T.~Magath, and A.~Altintas,
-``Numerical analysis and synthesis of 2-D quasioptical reflectors and
-  beam waveguides based on an integral-equation approach with Nystrom's
-  discretization,''
-\emph{J.\ Opt.\ Soc.\ Amer.\ A}, vol.~24, no.~9, pp.~2831--2836, 2007.
-
-\bibitem{oguzer1995}
-T.~Oguzer, A.~Altintas, and A.~I.~Nosich,
-``Accurate simulation of reflector antennas by complex source--dual
-  series approach,''
-\emph{IEEE Trans.\ Antennas Propag.}, vol.~43, no.~8, pp.~793--801,
-1995.
-
-\bibitem{oguzer2001}
-T.~Oguzer, A.~I.~Nosich, and A.~Altintas,
-``E-polarized beam scattering by an open cylindrical PEC strip having
-  arbitrary conical-section profile,''
-\emph{Microw.\ Opt.\ Technol.\ Lett.}, vol.~31, no.~6, pp.~480--484,
-2001.
-
-\bibitem{tong2006}
-M.~S.~Tong and W.~C.~Chew,
-``Nystrom method with edge condition for electromagnetic scattering by
-  2-D open structures,''
-\emph{Progress In Electromagnetics Research}, vol.~62, pp.~49--68,
-2006.
-
-\bibitem{tsalamengas2006}
-J.~L.~Tsalamengas,
-``Exponentially converging Nystrom's methods for systems of SIEs with
-  applications to open/closed strip or slot-loaded 2-D structures,''
-\emph{IEEE Trans.\ Antennas Propag.}, vol.~54, no.~5, pp.~1549--1558,
-2006.
+\bibitem{vinogradova2021}
+E.~D. Vinogradova and K. Kobayashi, ``Complex eigenvalues of natural
+TM-oscillations in an open resonator formed by two sinusoidally corrugated
+metallic strips,'' \emph{IET Microw., Antennas Propag.}, vol. 15, no. 10,
+pp. 1283--1298, 2021, doi: 10.1049/mia2.12166.
 
 \end{thebibliography}
 
