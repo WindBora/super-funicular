@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2026.4.1)  4 AUG 2026 17:28
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2026.4.1)  13 AUG 2026 19:03
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -22,7 +22,7 @@ LaTeX Font Info:    Trying to load font information for OT1+ptm on input line 50
 (D:\Users\match\AppData\Local\Programs\MiKTeX\tex/latex/psnfss\ot1ptm.fd
 File: ot1ptm.fd 2001/06/04 font definitions for OT1/ptm.
 )
--- Using 210mm x 297mm (a4) paper.
+-- Using 8.5in x 11in (letter) paper.
 -- Using PDF output.
 \@IEEEnormalsizeunitybaselineskip=\dimen143
 -- This is a 10 point document.
@@ -103,7 +103,9 @@ LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <24> not available
 \IEEEPARstartletwidth=\dimen163
 \c@IEEEbiography=\count267
 \@IEEEtranrubishbin=\box52
-) (D:\Users\match\AppData\Local\Programs\MiKTeX\tex/latex/cite\cite.sty
+)
+** ATTENTION: Overriding command lockouts (line 2).
+(D:\Users\match\AppData\Local\Programs\MiKTeX\tex/latex/cite\cite.sty
 LaTeX Info: Redefining \cite on input line 302.
 LaTeX Info: Redefining \nocite on input line 332.
 Package: cite 2015/02/27  v 5.5
@@ -259,77 +261,67 @@ Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 48
  (D:\Users\match\AppData\Local\Programs\MiKTeX\tex/latex/00miktex\epstopdf-sys.cfg
 File: epstopdf-sys.cfg 2021/03/18 v2.0 Configuration of epstopdf for MiKTeX
 ))
-Underfull \hbox (badness 1412) in paragraph at lines 44--47
+Underfull \hbox (badness 1412) in paragraph at lines 47--50
 []\OT1/ptm/b/it/9 Index Terms\OT1/ptm/b/n/9 ---Electromagnetic scat-ter-ing, si-nu-soidal open
  []
 
 
-Underfull \hbox (badness 3049) in paragraph at lines 51--60
+Underfull \hbox (badness 3049) in paragraph at lines 54--68
 []\OT1/ptm/m/n/10 Finite cor-ru-gated con-duc-tors com-bine periodic-surface
  []
 
-
-Underfull \hbox (badness 1796) in paragraph at lines 61--71
-\OT1/ptm/m/n/10 com-ple-men-tary meth-ods. Kobayashi and Eizawa used a
- []
-
-LaTeX Font Info:    Trying to load font information for U+msa on input line 74.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 82.
 (D:\Users\match\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 74.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 82.
  (D:\Users\match\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 )
-<fig1_geometry.pdf, id=1, 251.98091pt x 98.39215pt>
+<fig1_geometry.pdf, id=1, 251.98091pt x 104.7983pt>
 File: fig1_geometry.pdf Graphic file (type pdf)
 <use fig1_geometry.pdf>
-Package pdftex.def Info: fig1_geometry.pdf  used on input line 103.
-(pdftex.def)             Requested size: 252.0pt x 98.4039pt.
+Package pdftex.def Info: fig1_geometry.pdf  used on input line 109.
+(pdftex.def)             Requested size: 252.0pt x 104.8108pt.
  [1{C:/Users/match/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}{D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/base/8r.enc}
 
 
- <./fig1_geometry.pdf>]
-LaTeX Font Info:    Trying to load font information for OT1+pcr on input line 189.
- (D:\Users\match\AppData\Local\Programs\MiKTeX\tex/latex/psnfss\ot1pcr.fd
-File: ot1pcr.fd 2001/06/04 font definitions for OT1/pcr.
-)
-<fig2_verification.pdf, id=52, 515.76643pt x 194.16492pt>
+]
+Underfull \hbox (badness 2990) in paragraph at lines 242--246
+\OT1/ptm/m/n/10 be-low dis-play the as-so-ci-ated an-gu-lar scat-ter-ing pat-tern
+ []
+
+<fig2_verification.pdf, id=19, 515.76643pt x 194.16492pt>
 File: fig2_verification.pdf Graphic file (type pdf)
 <use fig2_verification.pdf>
-Package pdftex.def Info: fig2_verification.pdf  used on input line 261.
+Package pdftex.def Info: fig2_verification.pdf  used on input line 256.
 (pdftex.def)             Requested size: 516.0pt x 194.25627pt.
- [2]
-<fig3_field_pattern.pdf, id=60, 511.84395pt x 223.07292pt>
+<fig3_field_pattern.pdf, id=20, 511.61075pt x 223.07292pt>
 File: fig3_field_pattern.pdf Graphic file (type pdf)
 <use fig3_field_pattern.pdf>
-Package pdftex.def Info: fig3_field_pattern.pdf  used on input line 329.
-(pdftex.def)             Requested size: 428.28094pt x 186.66516pt.
-<fig4_amplitude_polar.pdf, id=61, 515.76643pt x 196.7698pt>
+Package pdftex.def Info: fig3_field_pattern.pdf  used on input line 269.
+(pdftex.def)             Requested size: 516.0pt x 225.00574pt.
+<fig4_amplitude_polar.pdf, id=21, 515.76643pt x 197.52263pt>
 File: fig4_amplitude_polar.pdf Graphic file (type pdf)
 <use fig4_amplitude_polar.pdf>
-Package pdftex.def Info: fig4_amplitude_polar.pdf  used on input line 356.
-(pdftex.def)             Requested size: 428.28094pt x 163.39696pt.
-<fig5_frequency_polar.pdf, id=62, 515.76643pt x 196.7698pt>
+Package pdftex.def Info: fig4_amplitude_polar.pdf  used on input line 281.
+(pdftex.def)             Requested size: 516.0pt x 197.61555pt.
+<fig5_frequency_polar.pdf, id=22, 515.76643pt x 197.52263pt>
 File: fig5_frequency_polar.pdf Graphic file (type pdf)
 <use fig5_frequency_polar.pdf>
-Package pdftex.def Info: fig5_frequency_polar.pdf  used on input line 374.
-(pdftex.def)             Requested size: 428.28094pt x 163.39696pt.
- [3 <./fig2_verification.pdf>]
+Package pdftex.def Info: fig5_frequency_polar.pdf  used on input line 292.
+(pdftex.def)             Requested size: 516.0pt x 197.61555pt.
+[2 <./fig1_geometry.pdf>]
+Underfull \vbox (badness 3148) has occurred while \output is active []
 
-LaTeX Warning: Text page 4 contains only floats.
-
-
+ [3 <./fig2_verification.pdf> <./fig3_field_pattern.pdf>]
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
+ [4 <./fig4_amplitude_polar.pdf> <./fig5_frequency_polar.pdf>]
+Underfull \hbox (badness 2088) in paragraph at lines 426--438
+[]\OT1/ptm/m/n/10 A log-singular in-te-gral equa-tion, dis-cretized with the
+ []
 
-
-LaTeX Warning: Text page 4 contains only floats.
-
-
-Underfull \vbox (badness 10000) has occurred while \output is active []
-
- [4 <./fig3_field_pattern.pdf> <./fig4_amplitude_polar.pdf> <./fig5_frequency_polar.pdf>]
 
 ** Conference Paper **
 Before submitting the final camera ready copy, remember to:
@@ -348,15 +340,15 @@ L3 programming layer <2024-01-04>
  ***********
  ) 
 Here is how much of TeX's memory you used:
- 3697 strings out of 474486
- 59774 string characters out of 5743756
- 1954542 words of memory out of 5000000
- 25942 multiletter control sequences out of 15000+600000
- 598492 words of font info for 122 fonts, out of 8000000 for 9000
+ 3672 strings out of 474486
+ 59411 string characters out of 5743756
+ 1955542 words of memory out of 5000000
+ 25921 multiletter control sequences out of 15000+600000
+ 599701 words of font info for 122 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 57i,14n,65p,627b,285s stack positions out of 10000i,1000n,20000p,200000b,200000s
-<D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmex10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cmextra/cmex7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cmextra/cmex8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi5.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmib10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cmextra/cmmib7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cmextra/cmmib8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr5.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr6.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/urw/courier/ucrr8a.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmb8a.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmbi8a.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmr8a.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmri8a.pfb>
-Output written on main.pdf (5 pages, 545782 bytes).
+ 57i,14n,65p,642b,290s stack positions out of 10000i,1000n,20000p,200000b,200000s
+<D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmex10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cmextra/cmex7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cmextra/cmex8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi5.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmib10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cmextra/cmmib7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cmextra/cmmib8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr5.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr6.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy7.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy8.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmb8a.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmbi8a.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmr8a.pfb><D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmri8a.pfb>
+Output written on main.pdf (5 pages, 555190 bytes).
 PDF statistics:
  299 PDF objects out of 1000 (max. 8388607)
  0 named destinations out of 1000 (max. 500000)

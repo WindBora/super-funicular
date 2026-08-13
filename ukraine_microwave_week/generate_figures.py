@@ -110,7 +110,7 @@ plt.rcParams.update(
 )
 
 POLAR_QUANTITY_LABEL = (
-    r"$10\log_{10}[(\mathrm{d}\sigma/\mathrm{d}\varphi)/L]$ (dB)"
+    r"$10\log_{10}[|\Phi_{\rm sc}(\varphi)|^2/(kL)]$ (dB)"
 )
 POLAR_COMMON_SCALE_LABEL = (
     POLAR_QUANTITY_LABEL + r"; common radial scale: $-30$ to $+15$ dB"
@@ -300,7 +300,7 @@ def figure_geometry() -> None:
         arrowprops={"arrowstyle": "<->", "lw": 0.8, "color": COLORS["black"]},
     )
     ax.vlines([-1.0, 1.0], dimension_y + 0.025, 0.0, colors=COLORS["gray"], lw=0.55)
-    ax.text(0.0, dimension_y - 0.025, r"$2L$", ha="center", va="top")
+    ax.text(0.0, dimension_y - 0.065, r"$2L$", ha="center", va="top")
 
     ax.annotate(
         "",
@@ -308,7 +308,7 @@ def figure_geometry() -> None:
         xytext=(0.0, 0.0),
         arrowprops={"arrowstyle": "<->", "lw": 0.8, "color": COLORS["vermillion"]},
     )
-    ax.text(0.045, 0.052, r"$h$", color=COLORS["vermillion"], ha="left", va="center")
+    ax.text(0.03, 0.135, r"$h$", color=COLORS["vermillion"], ha="left", va="center")
 
     # The schematic shows the general incidence convention beta; the numerical
     # figures below specialize it to normal incidence, beta=pi/2.
@@ -343,28 +343,39 @@ def figure_geometry() -> None:
         )
     )
     ax.text(-0.78, -0.145, r"$\beta$", color=COLORS["green"], ha="center")
-    ax.text(-0.64, -0.06, r"$\mathbf{k}_{\rm i}$", color=COLORS["green"], va="center")
+    ax.text(-0.67, -0.18, r"$\mathbf{k}_{\rm i}$", color=COLORS["green"], va="center")
 
+    ray_origin = np.array([0.40, H_REPRESENTATIVE])
     ray_angle = np.deg2rad(38.0)
-    ray_length = 0.42
+    ray_length = 0.29
+    ray_end = ray_origin + ray_length * np.array(
+        [np.cos(ray_angle), np.sin(ray_angle)]
+    )
+    ax.plot(
+        [ray_origin[0], ray_origin[0] + 0.24],
+        [ray_origin[1], ray_origin[1]],
+        color=COLORS["gray"],
+        lw=0.55,
+        ls=":",
+    )
     ax.annotate(
         "",
-        xy=(ray_length * np.cos(ray_angle), ray_length * np.sin(ray_angle)),
-        xytext=(0.0, 0.0),
+        xy=ray_end,
+        xytext=ray_origin,
         arrowprops={"arrowstyle": "->", "lw": 0.9, "color": COLORS["purple"]},
     )
     ax.add_patch(
         Arc(
-            (0.0, 0.0),
-            0.30,
-            0.30,
+            ray_origin,
+            0.24,
+            0.24,
             theta1=0.0,
             theta2=np.rad2deg(ray_angle),
             color=COLORS["purple"],
             lw=0.8,
         )
     )
-    ax.text(0.17, 0.045, r"$\varphi$", color=COLORS["purple"])
+    ax.text(0.54, 0.135, r"$\varphi$", color=COLORS["purple"])
 
     ax.text(
         0.98,
@@ -374,10 +385,10 @@ def figure_geometry() -> None:
         ha="right",
         va="top",
     )
-    ax.text(-1.02, 0.03, r"$-L$", ha="center", va="bottom")
-    ax.text(1.02, 0.03, r"$+L$", ha="center", va="bottom")
+    ax.text(-1.02, 0.075, r"$-L$", ha="center", va="bottom")
+    ax.text(1.02, 0.075, r"$+L$", ha="center", va="bottom")
     ax.set_xlim(-1.16, 1.16)
-    ax.set_ylim(-0.31, 0.39)
+    ax.set_ylim(-0.38, 0.39)
     ax.set_xlabel(r"$x/L$")
     ax.set_ylabel(r"$y/L$")
     ax.set_aspect("equal", adjustable="box")

@@ -102,7 +102,7 @@ sigma = integral_0^(2 pi) (d sigma / d phi) d phi.
 ```
 
 All polar panels plot the absolute, non-peak-normalized quantity
-`10 log10[(d sigma/d phi)/L]` on the common range `-30` to `+15 dB`. Its angular
+`10 log10[|Phi_sc(phi)|^2/(kL)]` on the common range `-30` to `+15 dB`. Its angular
 integral in linear units gives `sigma/L`. The near-field panel plots the
 relative intensity `|U_tot|^2/|U_inc|^2`; unit incidence makes the denominator
 one. The flat-strip geometrical-optics reference is `sigma=4L`.

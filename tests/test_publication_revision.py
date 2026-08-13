@@ -315,17 +315,38 @@ class IEEEStyleSourceTests(unittest.TestCase):
 
         expected_bibitems = (
             "nazarchuk1989",
+            "nosich2005",
+            "nosich2007",
+            "nosich_josa2007",
+            "gandel2010",
+            "tong2006",
+            "tsalamengas2006",
             "shapoval2011",
+            "oguzer1995",
+            "oguzer2001",
             "kobayashi1991",
             "eizawa2014",
             "vinogradova2019",
             "vinogradova2021",
         )
-        positions = [
-            self.manuscript.index(rf"\bibitem{{{key}}}")
-            for key in expected_bibitems
-        ]
-        self.assertEqual(positions, sorted(positions))
+        bibitems = tuple(
+            re.findall(
+                r"\\bibitem(?:\[[^\]]*\])?\{([^}]+)\}",
+                self.manuscript,
+            )
+        )
+        self.assertEqual(len(bibitems), 14)
+        self.assertEqual(len(set(bibitems)), len(bibitems))
+        self.assertEqual(bibitems, expected_bibitems)
+
+    def test_revised_manuscript_source_contract(self) -> None:
+        """Keep manuscript notation independent of code and equation numbers."""
+
+        self.assertNotIn("v_nodes", self.manuscript)
+        self.assertNotIn(r"\label{eq:potential}", self.manuscript)
+        self.assertIn(r"\label{tab:tscs_sweeps}", self.manuscript)
+        self.assertIn(r"|\Phi_{\rm sc}(\varphi)|^2/(kL)", self.manuscript)
+        self.assertNotIn(r"d\sigma/d\varphi", self.manuscript)
 
 
 if __name__ == "__main__":
