@@ -66,6 +66,18 @@ structures are reported in~\cite{tong2006,tsalamengas2006,shapoval2011}.
 Accurate regularized analyses of curved open PEC reflectors provide further
 full-wave benchmarks~\cite{oguzer2001,oguzer2009}.
 
+\begin{figure}[!t]
+ \centering
+ \includegraphics[width=\columnwidth]{fig1_geometry.pdf}
+ \caption{Symmetric finite sinusoidal PEC grating and angle convention.  The
+ pale coordinate axes at $x=0$ and $y=0$ are the symmetry axis and mean line;
+ the tick-ended orange segment denotes the corrugation height $h$.  The
+ incident wave vector is $\boldsymbol{k}_{\rm i}=k\widehat{\boldsymbol d}$,
+ where $\widehat{\boldsymbol d}=(\cos\beta,\sin\beta)$; observation angle
+ $\varphi$ is measured counterclockwise from $+x$.}
+ \label{fig:geometry}
+\end{figure}
+
 The scattering by PEC finite sinusoidal grating has also been studied with other
 methods.  Kobayashi and Eizawa used a Wiener--Hopf technique analysis for the 
 E-polarization case~\cite{kobayashi1991} and H-polarized analysis was reported
@@ -103,16 +115,6 @@ and the integer $P$ is the number of complete periods.  Its projected period
 is $\Lambda=2L/P$.  Hence geometry is specified by $h/L$ and $P$, while
 frequency enters only through the electric size $kL$.  The notation and
 angle convention are summarized in Fig.~\ref{fig:geometry}.
-
-\begin{figure}[!t]
- \centering
- \includegraphics[width=\columnwidth]{fig1_geometry.pdf}
- \caption{Symmetric finite sinusoidal PEC grating and angle convention.  The
- incident wave vector is $\boldsymbol{k}_{\rm i}=k\widehat{\boldsymbol d}$,
- where $\widehat{\boldsymbol d}=(\cos\beta,\sin\beta)$; observation angle
- $\varphi$ is measured counterclockwise from $+x$.}
- \label{fig:geometry}
-\end{figure}
 
 With the suppressed time factor $e^{-i\omega t}$, a unit-amplitude incident
 plane wave is
@@ -258,9 +260,10 @@ electrical-size sweep are presented in Figs.~\ref{fig:verification}--
  interpolation order for $P=5$, $h/L=0.10$, and $kL=20$.
  (b) Flat-strip total scattering cross section (TSCS), normalized by its
  geometrical-optics limit $4L$, from the differentiated Nystr\"om method
- ($N=256$), the method of analytical regularization [[xxx]] (MAR; $N=256$), and a
- pulse-basis method of moments [[yyy]](MoM; 192 elements); the dash-dotted line is the
- geometrical-optics (GO) limit.}
+ ($N=256$), the method of analytical regularization~\cite{nosich1999,nosich2016} (256 modes, $Q=2048$), and a
+ pulse-basis method of moments~\cite{harrington1967,hatamzadeh2008} (MoM; 192 elements); the dash-dotted line is the
+ geometrical-optics (GO) limit; the coincident $kL=0.25$ value
+ ($\simeq1.376$) lies above the displayed ordinate.}
  \label{fig:verification}
 \end{figure*}
 
@@ -370,7 +373,7 @@ finite-frequency value.
 Fig.~\ref{fig:fieldpattern} shows the results for the normal incidence for
 $P=5$, $h/L=0.10$, and $kL=20$.  As visible on panel (a), below the grating the 
 incident and reflected fields interfere and form the standing wave pattern; above it, 
-the pattern reveals the shadow.  The polar scattering pattern on panel (b) gives 
+the pattern reveals the shadow.  The polar scattering pattern on panel (b) gives
 $\Phi_{\rm sc}$ in~\eqref{eq:farfield} over $0\leq\varphi<2\pi$.  At this
 electric size, the $m=\pm1$ periodic-reference Floquet
 harmonics are propagating, and the calculated finite-grating pattern contains
@@ -426,7 +429,7 @@ the number of periods $P$ is taken larger.
 A log-singular integral equation, discretized with the Nystr\"om
 technique, has been studied for the E-polarized plane-wave scattering by a
 finite zero-thickness sinusoidal PEC grating.  We have visualized the solution 
-convergence in the $L2$-norm and demonstrated the agreement with two other 
+convergence in the $L^2$-norm and demonstrated the agreement with two other
 computational techniques, one of which (MAR) also has mathematically guaranteed 
 convergence. Additionally, we have demonstrated that the frequency dependence of  
 the broadside-illuminated flat PEC strip TSCS, computed with our code, tends to 
@@ -519,6 +522,28 @@ E.~D. Vinogradova and K. Kobayashi, ``Complex eigenvalues of natural
 TM-oscillations in an open resonator formed by two sinusoidally corrugated
 metallic strips,'' \emph{IET Microw., Antennas Propag.}, vol. 15, no. 10,
 pp. 1283--1298, 2021, doi: 10.1049/mia2.12166.
+
+\bibitem{nosich1999}
+A.~I. Nosich, ``The method of analytical regularization in wave-scattering and
+eigenvalue problems: Foundations and review of solutions,'' \emph{IEEE
+Antennas Propag. Mag.}, vol. 41, no. 3, pp. 34--49, Jun. 1999,
+doi: 10.1109/74.775246.
+
+\bibitem{nosich2016}
+A.~I. Nosich, ``Method of analytical regularization in computational
+photonics,'' \emph{Radio Sci.}, vol. 51, no. 8, pp. 1421--1430, Aug. 2016,
+doi: 10.1002/2016RS006044.
+
+\bibitem{harrington1967}
+R.~F. Harrington, ``Matrix methods for field problems,'' \emph{Proc. IEEE},
+vol. 55, no. 2, pp. 136--149, Feb. 1967,
+doi: 10.1109/PROC.1967.5433.
+
+\bibitem{hatamzadeh2008}
+S. Hatamzadeh-Varmazyar, M. Naser-Moghadasi, and Z. Masouri, ``A moment
+method simulation of electromagnetic scattering from conducting bodies,''
+\emph{Prog. Electromagn. Res.}, vol. 81, pp. 99--119, 2008,
+doi: 10.2528/PIER07122502.
 
 \end{thebibliography}
 

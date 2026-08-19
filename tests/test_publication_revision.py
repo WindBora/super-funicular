@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import math
 import re
 from pathlib import Path
@@ -18,6 +20,21 @@ from src2.solver import (
     PlaneWave,
     differential_scattering_cross_section,
     total_scattering_cross_section,
+)
+
+
+EXPECTED_FIGURE_NAMES = (
+    "fig1_geometry.pdf",
+    "fig2_convergence.pdf",
+    "fig3_flat_validation.pdf",
+    "fig4_near_field.pdf",
+    "fig5_representative_polar.pdf",
+    "fig6_height_flat.pdf",
+    "fig7_height_005.pdf",
+    "fig8_height_010.pdf",
+    "fig9_frequency_12.pdf",
+    "fig10_frequency_16.pdf",
+    "fig11_frequency_20.pdf",
 )
 
 
@@ -213,9 +230,20 @@ class GeneratedPublicationDataTests(unittest.TestCase):
         csv_path = paper_dir / "revision_results.csv"
         tex_path = paper_dir / "revision_results.tex"
         manuscript_path = paper_dir / "main.tex"
+        manifest_path = paper_dir / "publication_manifest.json"
 
         with csv_path.open(encoding="utf-8", newline="") as stream:
-            rows = list(csv.DictReader(stream))
+            reader = csv.DictReader(stream)
+            rows = list(reader)
+            self.assertTrue(
+                {
+                    "field_order",
+                    "residual_target_count",
+                    "small_argument_threshold",
+                    "small_argument_terms",
+                }
+                <= set(reader.fieldnames or ())
+            )
         tex = tex_path.read_text(encoding="utf-8")
         manuscript = manuscript_path.read_text(encoding="utf-8")
 
@@ -225,7 +253,9 @@ class GeneratedPublicationDataTests(unittest.TestCase):
         self.assertEqual(len(by_dataset["density_convergence"]), 9)
         self.assertEqual(len(by_dataset["flat_tscs_sweep"]), 41 * 4)
         self.assertEqual(len(by_dataset["flat_order_doubling"]), 9)
+        self.assertEqual(len(by_dataset["mar_flat_separated_convergence"]), 5)
         self.assertEqual(len(by_dataset["production_reference_check"]), 10)
+        self.assertEqual(len(by_dataset["mar_publication_crosscheck"]), 15)
         self.assertEqual(len(by_dataset["amplitude_polar"]), 3 * 4096)
         self.assertEqual(len(by_dataset["frequency_polar"]), 3 * 4096)
 
@@ -247,6 +277,14 @@ class GeneratedPublicationDataTests(unittest.TestCase):
             "FlatOrderDoublingMaxChange",
             "ProductionMaxTSCSChange",
             "ProductionMaxPatternChange",
+            "MARCorrugatedMaxTSCSChange",
+            "MARCorrugatedMaxPatternChange",
+            "MARCorrugatedMaxResidual",
+            "MARModeDoublingTSCSChange",
+            "MARModeDoublingPatternChange",
+            "MARProjectionDoublingTSCSChange",
+            "MARProjectionDoublingPatternChange",
+            "MARProjectionDoubledResidual",
         }
         self.assertEqual(set(metrics), expected_names)
 
@@ -270,7 +308,105 @@ class GeneratedPublicationDataTests(unittest.TestCase):
         self.assertLess(metrics["FlatOrderDoublingMaxChange"], 1.0e-3)
         self.assertLess(metrics["ProductionMaxTSCSChange"], 1.0e-3)
         self.assertLess(metrics["ProductionMaxPatternChange"], 1.0e-3)
+        self.assertLess(metrics["MARCorrugatedMaxTSCSChange"], 1.0e-3)
+        self.assertLess(metrics["MARCorrugatedMaxPatternChange"], 1.0e-3)
+        self.assertLess(metrics["MARCorrugatedMaxResidual"], 1.0e-5)
+        self.assertLess(metrics["MARModeDoublingTSCSChange"], 1.0e-6)
+        self.assertLess(metrics["MARModeDoublingPatternChange"], 1.0e-5)
+        self.assertLess(metrics["MARProjectionDoublingTSCSChange"], 1.0e-6)
+        self.assertLess(metrics["MARProjectionDoublingPatternChange"], 1.0e-6)
+        self.assertLess(metrics["MARProjectionDoubledResidual"], 1.0e-7)
         self.assertAlmostEqual(metrics["FirstOrderCutoff"], 5.0 * np.pi, places=13)
+
+        mar_rows = [
+            row
+            for dataset in (
+                "flat_tscs_sweep",
+                "flat_order_doubling",
+                "mar_flat_separated_convergence",
+                "mar_publication_crosscheck",
+            )
+            for row in by_dataset[dataset]
+            if row["series"] == "MAR"
+            or dataset
+            in {"mar_flat_separated_convergence", "mar_publication_crosscheck"}
+        ]
+        self.assertTrue(mar_rows)
+        for row in mar_rows:
+            with self.subTest(dataset=row["dataset"], series=row["series"]):
+                self.assertEqual(int(row["field_order"]), 4096)
+                self.assertEqual(int(row["residual_target_count"]), 513)
+                self.assertEqual(float(row["small_argument_threshold"]), 0.5)
+                self.assertEqual(int(row["small_argument_terms"]), 24)
+                self.assertIn("10.1109/74.775246", row["source_doi"])
+                self.assertIn("10.1002/2016RS006044", row["source_doi"])
+
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["license"], "MIT")
+        self.assertEqual(manifest["publication_configuration"]["mar_modes"], 256)
+        self.assertEqual(
+            manifest["publication_configuration"]["mar_projection_order"], 2048
+        )
+        self.assertEqual(
+            manifest["publication_configuration"]["mar_field_order"], 4096
+        )
+        self.assertEqual(
+            manifest["publication_configuration"]["mar_residual_target_count"], 513
+        )
+        self.assertEqual(
+            manifest["publication_configuration"]["mar_small_argument_threshold"],
+            0.5,
+        )
+        self.assertEqual(
+            manifest["publication_configuration"]["mar_small_argument_terms"], 24
+        )
+        self.assertEqual(manifest["publication_configuration"]["mom_panels"], 192)
+        self.assertEqual(
+            manifest["method_sources"]["MAR"],
+            "https://doi.org/10.1109/74.775246",
+        )
+        self.assertEqual(
+            manifest["method_sources"]["MAR_review_2016"],
+            "https://doi.org/10.1002/2016RS006044",
+        )
+        self.assertEqual(
+            manifest["method_sources"]["MoM"],
+            "https://doi.org/10.2528/PIER07122502",
+        )
+        expected_figure_names = set(EXPECTED_FIGURE_NAMES)
+        manifest_files = {
+            Path(relative_path).name for relative_path in manifest["sha256"]
+        }
+        self.assertTrue(expected_figure_names <= manifest_files)
+        self.assertTrue(
+            {
+                ".python-version",
+                "geometry.py",
+                "numerics.py",
+            }
+            <= manifest_files
+        )
+        project_root = paper_dir.parent
+        for relative_path, expected_digest in manifest["sha256"].items():
+            source_path = project_root / relative_path
+            with self.subTest(manifest_path=relative_path):
+                self.assertTrue(source_path.is_file())
+                actual_digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
+                self.assertEqual(actual_digest, expected_digest)
+        for figure_name in expected_figure_names:
+            self.assertIn(figure_name, manuscript)
+            figure_data = (paper_dir / figure_name).read_bytes()
+            self.assertNotIn(b"/CreationDate", figure_data)
+
+    def test_near_field_figure_remains_vector_output(self) -> None:
+        generator_path = (
+            Path(__file__).resolve().parents[1]
+            / "ukraine_microwave_week"
+            / "generate_figures.py"
+        )
+        source = generator_path.read_text(encoding="utf-8")
+        self.assertIn("rasterized=False", source)
+        self.assertNotIn("rasterized=True", source)
 
 
 class IEEEStyleSourceTests(unittest.TestCase):
@@ -302,6 +438,9 @@ class IEEEStyleSourceTests(unittest.TestCase):
             self.manuscript,
             r"\\newpage\s*\\null\s*\\newpage",
         )
+        self.assertNotIn(r"\enlargethispage", self.manuscript)
+        self.assertNotIn(r"\vspace{-", self.manuscript)
+        self.assertNotIn("wrapfigure", self.manuscript)
 
     def test_index_terms_and_bibliography_order(self) -> None:
         keywords = re.search(
@@ -322,12 +461,16 @@ class IEEEStyleSourceTests(unittest.TestCase):
             "tong2006",
             "tsalamengas2006",
             "shapoval2011",
-            "oguzer1995",
             "oguzer2001",
+            "oguzer2009",
             "kobayashi1991",
             "eizawa2014",
             "vinogradova2019",
             "vinogradova2021",
+            "nosich1999",
+            "nosich2016",
+            "harrington1967",
+            "hatamzadeh2008",
         )
         bibitems = tuple(
             re.findall(
@@ -335,7 +478,7 @@ class IEEEStyleSourceTests(unittest.TestCase):
                 self.manuscript,
             )
         )
-        self.assertEqual(len(bibitems), 14)
+        self.assertEqual(len(bibitems), 18)
         self.assertEqual(len(set(bibitems)), len(bibitems))
         self.assertEqual(bibitems, expected_bibitems)
 
@@ -347,6 +490,54 @@ class IEEEStyleSourceTests(unittest.TestCase):
         self.assertIn(r"\label{tab:tscs_sweeps}", self.manuscript)
         self.assertIn(r"|\Phi_{\rm sc}(\varphi)|^2/(kL)", self.manuscript)
         self.assertNotIn(r"d\sigma/d\varphi", self.manuscript)
+
+        self.assertNotIn(r"\begin{figure*}", self.manuscript)
+        figure_blocks = re.findall(
+            r"\\begin\{figure\}(.*?)\\end\{figure\}",
+            self.manuscript,
+            flags=re.DOTALL,
+        )
+        self.assertEqual(len(figure_blocks), 11)
+
+        included_files: list[str] = []
+        labels: list[str] = []
+        captions: list[str] = []
+
+        def braced_argument(source: str, command: str) -> str:
+            marker = rf"\{command}{{"
+            start = source.find(marker)
+            self.assertNotEqual(start, -1)
+            start += len(marker)
+            depth = 1
+            for index in range(start, len(source)):
+                if source[index] == "{":
+                    depth += 1
+                elif source[index] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return source[start:index]
+            self.fail(f"unterminated {marker} argument")
+
+        for block in figure_blocks:
+            graphics = re.findall(
+                r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}", block
+            )
+            block_labels = re.findall(r"\\label\{([^}]+)\}", block)
+            self.assertEqual(len(graphics), 1)
+            self.assertEqual(len(block_labels), 1)
+            self.assertEqual(block.count(r"\caption{"), 1)
+            included_files.append(graphics[0])
+            labels.append(block_labels[0])
+            captions.append(braced_argument(block, "caption"))
+
+        self.assertEqual(tuple(included_files), EXPECTED_FIGURE_NAMES)
+        self.assertEqual(len(set(labels)), 11)
+        self.assertEqual(len(set(captions)), 11)
+
+        for figure_name, caption in zip(included_files[5:], captions[5:]):
+            with self.subTest(figure=figure_name):
+                self.assertNotRegex(caption, r"(?i)\bpanels?\b")
+                self.assertNotRegex(caption, r"\([abc]\)")
 
 
 if __name__ == "__main__":

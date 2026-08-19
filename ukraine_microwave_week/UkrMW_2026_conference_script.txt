@@ -1,0 +1,185 @@
+Ukrainian Microwave Week 2026
+Conference presentation script — approximately 7 minutes
+
+E-POLARIZED PLANE-WAVE SCATTERING BY A FINITE SINUSOIDAL PEC GRATING VIA THE NYSTRÖM METHOD
+
+A. Petryshyn, S. V. Dukhopelnykov, and T. L. Zinenko
+O. Y. Usikov Institute for Radiophysics and Electronics, NAS of Ukraine
+
+
+SLIDE 1 — TITLE
+Target time: 0:00–0:40
+
+Good morning. I am Andrii Petryshyn, and this work was carried out with Serhii
+Dukhopelnykov and Tetiana Zinenko at the O. Y. Usikov Institute for
+Radiophysics and Electronics of the National Academy of Sciences of Ukraine.
+
+This work was supported by the National Research Foundation of Ukraine via
+project number 2025.07/0094.
+
+We study two-dimensional E-polarized plane-wave scattering by a finite
+sinusoidal perfectly conducting grating. The practical question is simple:
+how can we compute this open-arc problem accurately while also interpreting
+the pattern using familiar infinite-grating ideas?
+
+I will show a compact Nyström formulation, its numerical validation, and what
+it reveals about corrugation height and electrical size.
+
+
+SLIDE 2 — A FINITE GRATING COMBINES PERIODIC SCATTERING WITH UNAVOIDABLE EDGE EFFECTS
+Target time: 0:40–1:25
+
+An infinite periodic grating is naturally described by Floquet harmonics with
+discrete propagation directions. A finite grating is different. Truncation
+introduces two endpoints, so the induced current has edge singularities and
+the radiation contains an end-generated background. With only five periods,
+the periodic response is also aperture-broadened.
+
+Therefore, we should not speak of exact Floquet channels for the finite
+object. Our central result is more careful: the infinite-grating harmonic
+directions remain very useful reference markers for the broad lobes of the
+finite-grating pattern, while the specular lobe and the edge contribution
+remain visible.
+
+
+SLIDE 3 — THREE DIMENSIONLESS PARAMETERS DEFINE THE SCATTERING PROBLEM
+Target time: 1:25–2:15
+
+The problem is two-dimensional because the structure is invariant along the z
+axis, and E polarization is represented by the scalar component U equal to E
+sub z.
+
+The zero-thickness PEC strip is parameterized by Gamma of t equal to L t in x
+and h cosine of pi P t in y, for t from minus one to one. The geometry is
+therefore controlled by the number of periods P and the relative height h over
+L. Frequency enters through kL.
+
+The equations allow arbitrary incidence angle beta, although the numerical
+results shown here use normal incidence, beta equal to pi over two. The
+projected grating period is two L divided by P.
+
+
+SLIDE 4 — EDGE EXTRACTION TURNS THE OPEN-ARC PROBLEM INTO A STABLE NYSTRÖM SYSTEM
+Target time: 2:15–3:20
+
+The numerical difficulty is concentrated at the two open ends. Instead of
+asking the discretization to discover the singular current, we factor the
+known inverse-square-root behavior analytically. The remaining density v is
+smooth.
+
+The original single-layer equation has a logarithmic singularity. We
+differentiate it with respect to the observation parameter and explicitly
+separate the Cauchy term, whose coefficient is minus two i over pi. The
+remainder is continuous.
+
+We then discretize the principal-value equation at interlaced first- and
+second-kind Gauss–Chebyshev points. Differentiation loses an integration
+constant, so one weighted supplementary equation restores equivalence to the
+original integral equation. The result is a compact dense N-by-N system.
+
+
+SLIDE 5 — INDEPENDENT CHECKS SUPPORT BOTH CONVERGENCE AND PHYSICAL ACCURACY
+Target time: 3:20–4:20
+
+Before interpreting the corrugated-grating patterns, we verified the solver in
+two ways.
+
+First, for P equal to five, h over L equal to zero point one, and kL equal to
+twenty, the weighted L2 error decreases systematically with interpolation
+order and reaches 2.81142 times ten to the minus five at N equal to 512.
+Recomputing every unique publication case at N equal to 800 changes the
+normalized total scattering cross section by at most 7.53315 times ten to the
+minus six, and the full complex far-field pattern by at most 2.30664 times ten
+to the minus five.
+
+Second, for a flat strip, three independent implementations agree within
+1.59298 times ten to the minus five. At kL equal to twenty, the normalized
+cross section is 0.9999612, very close to the geometrical-optics limit.
+
+
+SLIDE 6 — AT kL = 20, PERIODIC AND FINITE-APERTURE SIGNATURES COEXIST
+Target time: 4:20–5:10
+
+Now consider the representative five-period grating with h over L equal to
+zero point one and kL equal to twenty under normal incidence.
+
+In the total-field intensity, the incident and reflected waves interfere below
+the grating and form a standing-wave pattern, while the opposite side shows a
+shadow. In the far field, the first-order periodic-reference harmonics are
+propagating, and the finite grating develops broad off-normal lobes near their
+directions.
+
+But the pattern is not the pattern of an infinite surface. The specular
+reflection lobe remains, and the endpoints generate a background across angle.
+This coexistence is the main physical signature of a short periodic aperture.
+
+
+SLIDE 7 — CORRUGATION REDISTRIBUTES THE PATTERN MORE THAN THE TOTAL SCATTERED POWER
+Target time: 5:10–6:00
+
+At fixed P equal to five and kL equal to twenty, increasing the corrugation
+height changes both the phase and magnitude of the induced current along each
+period. The angular pattern is therefore redistributed between the specular
+and off-normal lobes.
+
+The integrated power changes much less dramatically: the normalized total
+scattering cross section moves from 0.9999612 for the flat strip to 0.9948396
+at h over L equal to zero point zero five and 0.9926829 at h over L equal to
+zero point one.
+
+A presentation detail matters here: all polar plots in the paper use the same
+absolute scale from minus thirty to plus fifteen decibels. If each pattern were
+normalized to its own maximum, the real level changes would be concealed.
+
+
+SLIDE 8 — THE FIRST-ORDER REFERENCE LOBES SWITCH ON AT kL = πP
+Target time: 6:00–6:55
+
+Frequency changes both the electrical width and the set of propagating
+reference harmonics. At normal incidence, the reference condition is cosine
+phi sub m equal to m pi P over kL.
+
+For P equal to five, the first-order threshold is kL equal to pi P, or
+15.70796. Therefore, at kL equal to twelve, the plus and minus first orders are
+evanescent. At sixteen, they have just become propagating, so the corresponding
+finite-grating lobes appear near grazing. At twenty, those lobes move farther
+away from grazing.
+
+Their finite width comes from the short, five-period aperture and should narrow
+as the number of periods increases. The normalized cross sections are
+1.010974, 0.9968797, and 0.9926829 for the three cases.
+
+
+SLIDE 9 — FLOQUET DIRECTIONS EXPLAIN THE LOBES; THE NYSTRÖM MODEL EXPLAINS THE FINITE GRATING
+Target time: 6:55–7:40
+
+To conclude, the differentiated Nyström formulation handles the physical edge
+singularity explicitly and converges reliably with interpolation order. The
+flat-strip comparison against analytical regularization and a pulse-basis
+method of moments provides an independent numerical and physical check.
+
+For the five-period sinusoidal grating, corrugation height primarily
+redistributes the angular scattering, while frequency determines whether the
+periodic-reference orders can propagate and where their lobes appear.
+
+The infinite-grating Floquet directions therefore provide a useful
+interpretive map, but the finite object retains broadening, specular reflection,
+and edge-generated radiation. The key message is that both viewpoints are
+necessary: periodic physics identifies the lobe directions, and the
+finite-aperture solution determines the actual pattern.
+
+Thank you. I welcome your questions.
+
+
+OPTIONAL 5-MINUTE CUT
+
+To stay close to five minutes, shorten Slide 4 after “The remaining density v
+is smooth,” omit the N = 800 details on Slide 5, and present only the threshold
+and qualitative scan on Slide 8. Keep the opening and conclusion unchanged.
+
+
+SOURCE
+
+A. Petryshyn, S. V. Dukhopelnykov, and T. L. Zinenko, “E-Polarized
+Plane-Wave Scattering by a Finite Sinusoidal PEC Grating via the Nyström
+Method,” Ukrainian Microwave Week 2026 conference manuscript.

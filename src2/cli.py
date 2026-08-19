@@ -182,7 +182,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "compare_all",
         ),
         default="paper_mds",
-        help="Numerical backend. 'paper_mds' assembles the Nosich 2007 Eq. (11) MDS system directly and is the default. 'nystrom' is the legacy direct-collocation backend. 'mom' uses pulse-basis method of moments, 'mar' uses the analytically regularized Cauchy-SIE system. 'compare' runs legacy Nystrom and FDTD, 'compare_mom' runs legacy Nystrom and MoM, 'compare_mar' runs legacy Nystrom and MAR, 'compare_paper_mds' runs legacy Nystrom and the paper-faithful MDS, and 'compare_all' runs Paper MDS, MoM, and MAR on the same plot grid.",
+        help="Numerical backend. 'paper_mds' assembles the Nosich 2007 Eq. (11) MDS system directly and is the default. 'nystrom' is the legacy direct-collocation backend. 'mom' uses pulse-basis method of moments, while 'mar' analytically inverts the logarithmic static operator in a weighted Chebyshev basis before solving the second-kind modal system. 'compare' runs legacy Nystrom and FDTD, 'compare_mom' runs legacy Nystrom and MoM, 'compare_mar' runs legacy Nystrom and MAR, 'compare_paper_mds' runs legacy Nystrom and the paper-faithful MDS, and 'compare_all' runs Paper MDS, MoM, and MAR on the same plot grid.",
     )
     parser.add_argument("--n", type=int, default=120, help="Interpolation order.")
     parser.add_argument(

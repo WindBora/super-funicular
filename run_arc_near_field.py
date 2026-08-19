@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from src2.geometry import ParabolaArc
-from src2.solver import ComplexSourcePoint, MultiReflectorMAR as MultiReflectorMoM # MultiReflectorMoM
+from src2.solver import ComplexSourcePoint, MultiReflectorMoM
 
 
 def main():

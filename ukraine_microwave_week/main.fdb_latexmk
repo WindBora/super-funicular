@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1786636986.21571 "d:/uni/PhD/paper_1/ukraine_microwave_week/main.tex" "main.pdf" "main" 1786636986.81728 0
+["pdflatex"] 1786727025.11847 "d:/uni/PhD/paper_1/ukraine_microwave_week/main.tex" "main.pdf" "main" 1786727025.76803 0
   "C:/Users/match/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map" 1777576808 82507 a9eef8696c92627b87e9975edea03b2a ""
   "C:/Users/match/AppData/Local/MiKTeX/miktex/data/le/pdftex/pdflatex.fmt" 1774992785 24225045 f046df4137cdd6fc696cfc423c3f8883 ""
   "D:/Users/match/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/base/8r.enc" 1458473887 4993 80dc9bab7f31fb78a000ccfed0e27cab ""
@@ -92,15 +92,15 @@
   "D:/Users/match/AppData/Local/Programs/MiKTeX/tex/latex/l3backend/l3backend-pdftex.def" 1704400941 30006 57b07afb710ee2f649c65cfbafda39c1 ""
   "D:/Users/match/AppData/Local/Programs/MiKTeX/tex/latex/psnfss/ot1ptm.fd" 1585253778 1007 15056f4a61917ceed3a44e4ac11fcc52 ""
   "IEEEtran.cls" 1777554192 288304 5b2e4fa15b0f7eabb840ebf67df4c0f7 ""
-  "d:/uni/PhD/paper_1/ukraine_microwave_week/main.tex" 1786636984 24878 d42ab6cc73b8a8add7dc1fd261023696 ""
-  "fig1_geometry.pdf" 1786368806 25562 274042d7f9f898d5110c9a71526212df ""
-  "fig2_verification.pdf" 1786294332 55884 9eb1f0a2f6363e96900ce2a7ddff60df ""
-  "fig3_field_pattern.pdf" 1786294426 68485 8e7ba3d25e0229ec3e88d6304f64b21c ""
+  "d:/uni/PhD/paper_1/ukraine_microwave_week/main.tex" 1786726705 26071 5d62aa02ef8931400f863643d7f34087 ""
+  "fig1_geometry.pdf" 1786726386 25453 dd242100ba64777ad296b0951f1668c0 ""
+  "fig2_verification.pdf" 1786727024 54682 540929d96a9045afc913b38f5d87adfc ""
+  "fig3_field_pattern.pdf" 1786725132 121418 3a359fecae8037d930f90a3d74e77a3a ""
   "fig4_amplitude_polar.pdf" 1786294427 58396 e0dda3f4fbabc57ab6d03904c020d365 ""
   "fig5_frequency_polar.pdf" 1786294427 57093 800fb4960d096e8e146dc73f6e698597 ""
-  "main.aux" 1786636986 5977 30a53b5e0f67b98e93500c0211ac9ba5 "pdflatex"
-  "main.tex" 1786636984 24878 d42ab6cc73b8a8add7dc1fd261023696 ""
-  "revision_results.tex" 1786294427 1033 891dfbeebbc0c3140950afaebbcee0ce ""
+  "main.aux" 1786727025 6525 c89e018878ef3dbeb9fe74abc9b53abc "pdflatex"
+  "main.tex" 1786726705 26071 5d62aa02ef8931400f863643d7f34087 ""
+  "revision_results.tex" 1786723626 1674 4896bc3218e55857fc6a5945dac39029 ""
   (generated)
   "main.aux"
   "main.log"

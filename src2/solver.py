@@ -14,6 +14,7 @@ from typing import Protocol, Sequence
 import numpy as np
 from numpy.linalg import solve
 from numpy.polynomial.legendre import leggauss
+from scipy.fft import dct, dctn
 
 from .geometry import ParamCurve
 from .numerics import cheb_first_kind, collocation_nodes_no_overlap, hankel1
@@ -502,6 +503,21 @@ class MDSSolution:
         left = 20.0 * np.log10(np.abs(edge_left / center))
         right = 20.0 * np.log10(np.abs(edge_right / center))
         return float(left), float(right)
+
+
+@dataclass
+class MARSolution(MDSSolution):
+    """Chebyshev-modal MAR solution with compatible field helpers.
+
+    ``coefficients[p, n]`` multiplies the orthonormal weighted basis function
+    ``psi_0(t)=1`` or ``psi_n(t)=sqrt(2) T_n(t)`` for ``n >= 1`` on reflector
+    ``p``.  ``v_nodes`` contains the reconstructed smooth density at the
+    solver's independent field-quadrature nodes, so the inherited near- and
+    far-field methods use the same public interface as :class:`MDSSolution`.
+    """
+
+    solver: "MultiReflectorMAR"
+    coefficients: np.ndarray
 
 
 @dataclass
@@ -1011,149 +1027,373 @@ class MultiReflectorMoM:
         )
 
 
-class MultiReflectorMAR(MultiReflectorMDS):
-    """Solve the analytically regularized Cauchy-type SIE system.
+class MultiReflectorMAR:
+    """Chebyshev-Galerkin analytical regularization of the first-kind SIE.
 
-    This backend follows the regularized formulation documented in the local
-    derivation notes: the original weighted first-kind equation is
-    differentiated, its self-singularity is split into an explicit Cauchy term,
-    and one supplementary equation per reflector restores the lost integration
-    constant.
+    The logarithmic static part of every reflector's self operator is
+    diagonalized exactly in the edge-weighted Chebyshev basis.  Only the
+    continuous self remainder and smooth inter-reflector interactions are
+    evaluated numerically.  Left multiplication by the exact inverse of the
+    static eigenvalues produces a second-kind coefficient system; no
+    differentiated equation, point collocation, or supplementary row is used.
+
+    Parameters
+    ----------
+    reflectors, incident, n:
+        Retain the historical constructor API.  Here ``n`` is the number of
+        Chebyshev modes per reflector rather than the number of point-current
+        unknowns.
+    quadrature_order:
+        Midpoint-cosine order used to project the compact kernel remainder.
+        The default ``max(4*n, 128)`` is deliberately independent of the modal
+        truncation and can be doubled for a quadrature convergence check.
+    residual_order:
+        Number of independent target points used to report the original-IE
+        boundary residual.
+    field_order:
+        Midpoint-cosine order used only to reconstruct the solved density and
+        evaluate near fields, far fields, and the independently sampled
+        boundary residual.  It defaults to ``quadrature_order`` so existing
+        callers retain the previous sampling and post-processing behavior.
     """
 
-    cauchy_singularity_coeff = -2j / np.pi
     log_singularity_coeff = 2j / np.pi
+    small_argument_threshold = 0.5
+    small_argument_terms = 24
 
-    def _mar_boundary_nodes(self) -> np.ndarray:
-        """Return the second-kind Chebyshev zeros used in the MAR rows."""
+    def __init__(
+        self,
+        reflectors: Sequence[ParamCurve],
+        incident: IncidentField,
+        n: int = 64,
+        quadrature_order: int | None = None,
+        residual_order: int | None = None,
+        field_order: int | None = None,
+    ) -> None:
+        if n < 4:
+            raise ValueError("n must be at least 4")
+        k = float(incident.k)
+        if not np.isfinite(k) or k <= 0.0:
+            raise ValueError("incident.k must be a positive finite real number")
 
-        j = np.arange(1, self.n, dtype=np.float64)
-        return np.cos(j * np.pi / self.n)
+        self.reflectors = list(reflectors)
+        self.incident = incident
+        self.k = k
+        self.n = int(n)
+        self.num_reflectors = len(self.reflectors)
+        self.quadrature_order = (
+            max(4 * self.n, 128)
+            if quadrature_order is None
+            else int(quadrature_order)
+        )
+        if self.quadrature_order < 2 * self.n:
+            raise ValueError("quadrature_order must be at least 2*n")
+        self.residual_order = (
+            max(2 * self.n + 1, 65)
+            if residual_order is None
+            else int(residual_order)
+        )
+        if self.residual_order < 4:
+            raise ValueError("residual_order must be at least 4")
+        self.field_order = (
+            self.quadrature_order if field_order is None else int(field_order)
+        )
+        if self.field_order < 4:
+            raise ValueError("field_order must be at least 4")
 
-    def _regularized_self_m(self, reflector_index: int) -> np.ndarray:
-        """Return the analytically regularized self ``M_pp(t_i)`` samples."""
+        projection_angles = (
+            np.arange(self.quadrature_order, dtype=np.float64) + 0.5
+        ) * np.pi / self.quadrature_order
+        field_angles = (
+            np.arange(self.field_order, dtype=np.float64) + 0.5
+        ) * np.pi / self.field_order
+        self.projection_nodes = np.cos(projection_angles)
+        self.field_nodes = np.cos(field_angles)
+        self.field_weights = np.full(
+            self.field_order, 1.0 / self.field_order, dtype=np.float64
+        )
+        # ``MDSSolution`` field helpers use ``t_nodes`` and ``caches.x_t``.
+        # Keep that public convention while exposing ``projection_nodes`` for
+        # the DCT grid that assembles the modal system.
+        self.t_nodes = self.field_nodes
+        residual_indices = np.arange(1, self.residual_order + 1, dtype=np.float64)
+        self.tau_nodes = np.cos(
+            residual_indices * np.pi / (self.residual_order + 1.0)
+        )
+        self._basis_at_projection = self._basis(self.projection_nodes)
+        self._basis_at_field = self._basis(self.field_nodes)
+        self._static_constant = 1.0 + self.log_singularity_coeff * (
+            np.log(0.5 * self.k) + EULER_GAMMA
+        )
+        self.static_eigenvalues = np.empty(self.n, dtype=np.complex128)
+        self.static_eigenvalues[0] = (
+            self._static_constant
+            - self.log_singularity_coeff * np.log(2.0)
+        )
+        mode_numbers = np.arange(1, self.n, dtype=np.float64)
+        self.static_eigenvalues[1:] = -self.log_singularity_coeff / mode_numbers
+        self.caches = self._build_field_caches()
+        self.regularized_matrix: np.ndarray | None = None
+        self.regularized_rhs: np.ndarray | None = None
 
-        x_nodes = self.caches.x_t[reflector_index]
-        y_nodes = self.caches.y_t[reflector_index]
-        dx = x_nodes[:, None] - x_nodes[None, :]
-        dy = y_nodes[:, None] - y_nodes[None, :]
-        r = np.sqrt(dx * dx + dy * dy)
-        diff = self.t_nodes[:, None] - self.t_nodes[None, :]
+    def _basis(self, t: np.ndarray) -> np.ndarray:
+        """Return columns of the orthonormal weighted Chebyshev basis."""
 
-        smooth = np.empty((self.n, self.n), dtype=np.complex128)
-        off_diagonal = ~np.eye(self.n, dtype=bool)
-        smooth[off_diagonal] = (
-            hankel1(0, self.k * r[off_diagonal])
-            - self.log_singularity_coeff * np.log(np.abs(diff[off_diagonal]))
+        basis = np.polynomial.chebyshev.chebvander(
+            np.asarray(t, dtype=np.float64), self.n - 1
+        ).astype(np.float64)
+        if self.n > 1:
+            basis[:, 1:] *= np.sqrt(2.0)
+        return basis
+
+    def _build_field_caches(self) -> SolverCaches:
+        """Cache geometry at the independent field quadrature nodes."""
+
+        x_t: list[np.ndarray] = []
+        y_t: list[np.ndarray] = []
+        dx_t: list[np.ndarray] = []
+        dy_t: list[np.ndarray] = []
+        speed_t: list[np.ndarray] = []
+        x_tau: list[np.ndarray] = []
+        y_tau: list[np.ndarray] = []
+        dx_tau: list[np.ndarray] = []
+        dy_tau: list[np.ndarray] = []
+        for curve in self.reflectors:
+            xq, yq = curve.coords(self.t_nodes)
+            dxq, dyq = curve.derivatives(self.t_nodes)
+            xt, yt = curve.coords(self.tau_nodes)
+            dxt, dyt = curve.derivatives(self.tau_nodes)
+            arrays = [xq, yq, dxq, dyq, xt, yt, dxt, dyt]
+            if not all(np.all(np.isfinite(np.asarray(item))) for item in arrays):
+                raise ValueError("reflector coordinates and derivatives must be finite")
+            speed = np.hypot(dxq, dyq).astype(np.float64)
+            if np.any(speed <= 0.0) or not np.all(np.isfinite(speed)):
+                raise ValueError("reflector parameterizations must have nonzero finite speed")
+            x_t.append(np.asarray(xq, dtype=np.float64))
+            y_t.append(np.asarray(yq, dtype=np.float64))
+            dx_t.append(np.asarray(dxq, dtype=np.float64))
+            dy_t.append(np.asarray(dyq, dtype=np.float64))
+            speed_t.append(speed)
+            x_tau.append(np.asarray(xt, dtype=np.float64))
+            y_tau.append(np.asarray(yt, dtype=np.float64))
+            dx_tau.append(np.asarray(dxt, dtype=np.float64))
+            dy_tau.append(np.asarray(dyt, dtype=np.float64))
+        return SolverCaches(
+            x_t=x_t,
+            y_t=y_t,
+            dx_t=dx_t,
+            dy_t=dy_t,
+            speed_t=speed_t,
+            x_tau=x_tau,
+            y_tau=y_tau,
+            dx_tau=dx_tau,
+            dy_tau=dy_tau,
         )
 
-        diagonal_limit = 1.0 + self.log_singularity_coeff * (
-            np.log(0.5 * self.k * self.caches.speed_t[reflector_index]) + EULER_GAMMA
+    def near_field_weight(self) -> float:
+        """Return ``1/Q_field`` for the weighted first-kind field integral."""
+
+        return float(1.0 / self.field_order)
+
+    def far_field_prefactor(self) -> complex:
+        """Return the manuscript far-field prefactor including ``1/Q_field``."""
+
+        return complex(
+            np.sqrt(2.0 / (np.pi * 1j)) / self.field_order
         )
-        smooth[np.diag_indices(self.n)] = diagonal_limit
-        return (np.pi / self.n) * np.sum(smooth, axis=1) - 2j * np.log(2.0)
 
-    def _m_samples(self, target_reflector: int, source_reflector: int) -> np.ndarray:
-        """Return ``M_pq(t_i)`` sampled at the source reflector quadrature nodes."""
+    def _small_argument_dynamic_remainder(self, z: np.ndarray) -> np.ndarray:
+        """Evaluate ``H0(z)-1-a*(log(z/2)+gamma)`` without cancellation."""
 
-        if target_reflector == source_reflector:
-            return self._regularized_self_m(target_reflector)
+        z_arr = np.asarray(z, dtype=np.float64)
+        x = 0.25 * z_arr * z_arr
+        term = np.ones_like(x)
+        j0_minus_one = np.zeros_like(x)
+        harmonic_sum = np.zeros_like(x)
+        harmonic = 0.0
+        for order in range(1, self.small_argument_terms + 1):
+            term *= -x / (order * order)
+            harmonic += 1.0 / order
+            j0_minus_one += term
+            harmonic_sum -= harmonic * term
+        return j0_minus_one + self.log_singularity_coeff * (
+            (np.log(0.5 * z_arr) + EULER_GAMMA) * j0_minus_one
+            + harmonic_sum
+        )
 
-        x_source = self.caches.x_t[source_reflector][:, None]
-        y_source = self.caches.y_t[source_reflector][:, None]
-        x_target = self.caches.x_t[target_reflector][None, :]
-        y_target = self.caches.y_t[target_reflector][None, :]
-        r = np.sqrt((x_source - x_target) ** 2 + (y_source - y_target) ** 2)
-        return (np.pi / self.n) * np.sum(hankel1(0, self.k * r), axis=1)
+    def _dynamic_remainder(self, z: np.ndarray) -> np.ndarray:
+        """Return the Hankel kernel after removing its static local expansion."""
 
-    def _k_block(
+        z_arr = np.asarray(z, dtype=np.float64)
+        if np.any(z_arr <= 0.0) or not np.all(np.isfinite(z_arr)):
+            raise ValueError("positive finite arguments are required off the diagonal")
+        result = np.empty(z_arr.shape, dtype=np.complex128)
+        small = z_arr < self.small_argument_threshold
+        if np.any(small):
+            result[small] = self._small_argument_dynamic_remainder(z_arr[small])
+        if np.any(~small):
+            z_large = z_arr[~small]
+            result[~small] = (
+                hankel1(0, z_large)
+                - 1.0
+                - self.log_singularity_coeff
+                * (np.log(0.5 * z_large) + EULER_GAMMA)
+            )
+        return result
+
+    def _kernel_block_samples(
         self,
         target_reflector: int,
         source_reflector: int,
-        boundary_nodes: np.ndarray,
+        target_nodes: np.ndarray,
+        source_nodes: np.ndarray,
     ) -> np.ndarray:
-        """Return the regularized derivative-kernel block ``K_pq(t_i, tau_j)``."""
+        """Return compact/self or full/cross kernel samples, target by source."""
 
-        x_source = self.caches.x_t[source_reflector][:, None]
-        y_source = self.caches.y_t[source_reflector][:, None]
-        x_target = self.reflectors[target_reflector].x(boundary_nodes)[None, :]
-        y_target = self.reflectors[target_reflector].y(boundary_nodes)[None, :]
-        dx_target = self.reflectors[target_reflector].x_der(boundary_nodes)[None, :]
-        dy_target = self.reflectors[target_reflector].y_der(boundary_nodes)[None, :]
-
-        dx = x_source - x_target
-        dy = y_source - y_target
-        r = np.sqrt(dx * dx + dy * dy)
-        d_r_dtau = -((dx * dx_target) + (dy * dy_target)) / r
-        derivative_kernel = -self.k * hankel1(1, self.k * r) * d_r_dtau
+        target_curve = self.reflectors[target_reflector]
+        source_curve = self.reflectors[source_reflector]
+        target_nodes = np.asarray(target_nodes, dtype=np.float64)
+        source_nodes = np.asarray(source_nodes, dtype=np.float64)
+        xt = np.asarray(target_curve.x(target_nodes), dtype=np.float64)[:, None]
+        yt = np.asarray(target_curve.y(target_nodes), dtype=np.float64)[:, None]
+        xs = np.asarray(source_curve.x(source_nodes), dtype=np.float64)[None, :]
+        ys = np.asarray(source_curve.y(source_nodes), dtype=np.float64)[None, :]
+        distance = np.hypot(xs - xt, ys - yt)
 
         if target_reflector != source_reflector:
-            return derivative_kernel
+            if np.any(distance <= 0.0):
+                raise ValueError("distinct reflector parameterizations must not intersect")
+            return hankel1(0, self.k * distance)
 
-        diff = self.t_nodes[:, None] - boundary_nodes[None, :]
-        return derivative_kernel - self.cauchy_singularity_coeff / diff
+        delta = np.abs(source_nodes[None, :] - target_nodes[:, None])
+        diagonal = delta == 0.0
+        result = np.empty(distance.shape, dtype=np.complex128)
+        off_diagonal = ~diagonal
+        if np.any(off_diagonal):
+            ratio = distance[off_diagonal] / delta[off_diagonal]
+            if np.any(ratio <= 0.0) or not np.all(np.isfinite(ratio)):
+                raise ValueError("each reflector must be injective on [-1, 1]")
+            result[off_diagonal] = (
+                self._dynamic_remainder(self.k * distance[off_diagonal])
+                + self.log_singularity_coeff * np.log(ratio)
+            )
+        if np.any(diagonal):
+            speed = np.asarray(target_curve.speed(target_nodes), dtype=np.float64)
+            if np.any(speed <= 0.0) or not np.all(np.isfinite(speed)):
+                raise ValueError("reflector parameterizations must have nonzero finite speed")
+            diagonal_values = np.broadcast_to(
+                self.log_singularity_coeff * np.log(speed)[:, None],
+                result.shape,
+            )
+            result[diagonal] = diagonal_values[diagonal]
+        return result
+
+    def _project_kernel_block(
+        self, target_reflector: int, source_reflector: int
+    ) -> np.ndarray:
+        """Project one compact kernel block into coefficient space by DCT."""
+
+        samples = self._kernel_block_samples(
+            target_reflector,
+            source_reflector,
+            self.projection_nodes,
+            self.projection_nodes,
+        )
+        coefficients = dctn(samples, type=2, norm="ortho")
+        return coefficients[: self.n, : self.n] / self.quadrature_order
+
+    def _project_rhs(self, reflector_index: int) -> np.ndarray:
+        """Return weighted Chebyshev coefficients of ``-U_inc``."""
+
+        samples = -np.asarray(
+            self.incident.boundary_field(
+                self.reflectors[reflector_index], self.projection_nodes
+            ),
+            dtype=np.complex128,
+        )
+        return dct(samples, type=2, norm="ortho")[: self.n] / np.sqrt(
+            self.quadrature_order
+        )
 
     def solve_system(self) -> tuple[np.ndarray, np.ndarray]:
-        """Assemble the MAR linear system ``A v = b`` for the current unknowns."""
+        """Assemble ``(I + Lambda^-1 R)c = Lambda^-1 b``."""
 
         total_unknowns = self.num_reflectors * self.n
-        a = np.zeros((total_unknowns, total_unknowns), dtype=np.complex128)
-        b = np.zeros((total_unknowns,), dtype=np.complex128)
+        matrix = np.eye(total_unknowns, dtype=np.complex128)
+        rhs = np.zeros(total_unknowns, dtype=np.complex128)
+        for target in range(self.num_reflectors):
+            row = slice(target * self.n, (target + 1) * self.n)
+            rhs[row] = self._project_rhs(target) / self.static_eigenvalues
+            for source in range(self.num_reflectors):
+                col = slice(source * self.n, (source + 1) * self.n)
+                remainder = self._project_kernel_block(target, source)
+                matrix[row, col] += remainder / self.static_eigenvalues[:, None]
+        self.regularized_matrix = matrix
+        self.regularized_rhs = rhs
+        return matrix, rhs
 
-        direct_weight = np.pi / self.n
-        boundary_nodes = self._mar_boundary_nodes()
-        k_blocks: dict[tuple[int, int], np.ndarray] = {}
-        m_samples: dict[tuple[int, int], np.ndarray] = {}
+    def _boundary_residual(self, coefficients: np.ndarray) -> float:
+        """Evaluate the original first-kind IE at independent target nodes."""
 
-        for target_reflector in range(self.num_reflectors):
-            for source_reflector in range(self.num_reflectors):
-                k_blocks[(target_reflector, source_reflector)] = self._k_block(
-                    target_reflector=target_reflector,
-                    source_reflector=source_reflector,
-                    boundary_nodes=boundary_nodes,
+        target_basis = self._basis(self.tau_nodes)
+        v_source = coefficients @ self._basis_at_field.T
+        maximum = 0.0
+        for target in range(self.num_reflectors):
+            lhs = target_basis @ (
+                self.static_eigenvalues * coefficients[target]
+            )
+            for source in range(self.num_reflectors):
+                kernel = self._kernel_block_samples(
+                    target, source, self.tau_nodes, self.field_nodes
                 )
-                m_samples[(target_reflector, source_reflector)] = self._m_samples(
-                    target_reflector=target_reflector,
-                    source_reflector=source_reflector,
-                )
+                lhs += kernel @ (self.field_weights * v_source[source])
+            rhs = -np.asarray(
+                self.incident.boundary_field(
+                    self.reflectors[target], self.tau_nodes
+                ),
+                dtype=np.complex128,
+            )
+            maximum = max(maximum, float(np.max(np.abs(lhs - rhs))))
+        return maximum
 
-        for target_reflector in range(self.num_reflectors):
-            curve = self.reflectors[target_reflector]
-            rhs_boundary = -self.incident.boundary_derivative(curve, boundary_nodes)
-            rhs_constant = -direct_weight * np.sum(
-                self.incident.boundary_field(curve, self.t_nodes)
+    def solve(self) -> MARSolution:
+        """Solve the regularized modal system and reconstruct field samples."""
+
+        if self.num_reflectors == 0:
+            empty_coefficients = np.empty((0, self.n), dtype=np.complex128)
+            empty_nodes = np.empty(
+                (0, self.field_order), dtype=np.complex128
+            )
+            return MARSolution(
+                solver=self,
+                t_nodes=self.t_nodes.copy(),
+                tau_nodes=self.tau_nodes.copy(),
+                v_nodes=empty_nodes.copy(),
+                physical_current_nodes=empty_nodes,
+                boundary_residual_max=0.0,
+                coefficients=empty_coefficients,
             )
 
-            for boundary_index in range(self.n - 1):
-                row = target_reflector * self.n + boundary_index
-                b[row] = rhs_boundary[boundary_index]
-                for source_reflector in range(self.num_reflectors):
-                    col_slice = slice(
-                        source_reflector * self.n,
-                        (source_reflector + 1) * self.n,
-                    )
-                    block = direct_weight * k_blocks[(target_reflector, source_reflector)][
-                        :, boundary_index
-                    ]
-                    if target_reflector == source_reflector:
-                        diff = self.t_nodes - boundary_nodes[boundary_index]
-                        block = block + direct_weight * (
-                            self.cauchy_singularity_coeff / diff
-                        )
-                    a[row, col_slice] = block
-
-            supplementary_row = target_reflector * self.n + (self.n - 1)
-            b[supplementary_row] = rhs_constant
-            for source_reflector in range(self.num_reflectors):
-                col_slice = slice(
-                    source_reflector * self.n,
-                    (source_reflector + 1) * self.n,
-                )
-                a[supplementary_row, col_slice] = (
-                    direct_weight * m_samples[(target_reflector, source_reflector)]
-                )
-
-        return a, b
+        matrix, rhs = self.solve_system()
+        coefficient_vector = solve(matrix, rhs)
+        coefficients = coefficient_vector.reshape(self.num_reflectors, self.n)
+        v_nodes = coefficients @ self._basis_at_field.T
+        speeds = np.vstack(self.caches.speed_t)
+        physical_current = v_nodes / (
+            np.pi
+            * speeds
+            * np.sqrt(1.0 - self.t_nodes**2)[None, :]
+        )
+        residual = self._boundary_residual(coefficients)
+        return MARSolution(
+            solver=self,
+            t_nodes=self.t_nodes.copy(),
+            tau_nodes=self.tau_nodes.copy(),
+            v_nodes=v_nodes,
+            physical_current_nodes=physical_current,
+            boundary_residual_max=residual,
+            coefficients=coefficients,
+        )
 
 
 class DifferentiatedNystromSolver(MultiReflectorMDS):
